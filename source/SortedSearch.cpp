@@ -12,9 +12,14 @@
 #include "SIMD.h"
 #include "Unroller.h"
 
+#define USE_MKL
+#if defined(USE_MKL)
+#include <mkl.h>
+#endif
 
 // In total we resolve 2*(N-1)*nAvg*nRepeat indices
 const uint32   NX       = 1025;  // Dimension of the vector X. The vector Z has size 2(N-1)
+const size_t   NZ       = 4 * (NX - 1);  // size of array Z: must be even
 const unsigned nAvg     = 10;     // Number of random regenerations of vector X
 const unsigned nRepeat  = 10000; // Number repetition of the test
 const float intMin = 0.1f;
@@ -38,23 +43,19 @@ struct RawData
     // Allocate memory for vector Z and initialize it with the union of the extrema of the intervals in vector X, all mid points 
     // and an equal number of extra points extracted randomly in the interval [X_0,X_N)
     // Allocate memory for vector R (same size as Z) containing the indices of the segments [X_i,X_{i+1}) containing the numbers Z
-    RawData( size_t nx, T intMin, T intMax )
+    RawData( T intMin, T intMax )
     {
-        assert( nx>0 );
-
-        const size_t nz = 4 * (nx - 1);  // size of array Z: must be even
-
-        m_z.resize(nz);
-        m_r.resize(nz);
-        m_x.resize(nx);
+        m_z.resize(NZ);
+        m_r.resize(NZ);
+        m_x.resize(NX);
 
         // init x with random gaps drawn in intMin, intMax
         T xold = 0.0;
-        for (uint32 i = 0; i < nx; ++i)
+        for (uint32 i = 0; i < NX; ++i)
             m_x[i] = xold += dRand(intMin, intMax);
 
         // init z must belong to [ x[0], x[nx-1] )
-        for (uint32 j = 0; j + 1 < nx; ++j) {
+        for (uint32 j = 0; j + 1 < NX; ++j) {
             m_z[4 * j] = m_x[j];
             m_z[4 * j + 1] = (m_x[j + 1] + m_x[j]) / 2;
             m_z[4 * j + 2] = dRand(m_x.front(), m_x.back());
@@ -89,6 +90,77 @@ struct RawData
     AlignedVec<T, 32> m_z;
     AlignedVec<uint32, 32 > m_r;
 };
+
+
+#if defined(USE_MKL)
+
+template <class T> struct MKLTraits {};
+
+template <> struct MKLTraits < double >
+{
+    __forceinline
+        static void search(DFTaskPtr task, MKL_INT n, const double *zp, MKL_INT *rp, const double* datahint)
+    {
+        dfdSearchCells1D(task, DF_METHOD_STD, n, zp, DF_NO_HINT, datahint, rp);
+    }
+
+    static int dfNewTask1D(DFTaskPtr& task, MKL_INT n, double *px)
+    {
+        return dfdNewTask1D(&task, n, px, DF_QUASI_UNIFORM_PARTITION, 0, 0, 0);
+    }
+        
+};
+
+template <> struct MKLTraits < float >
+{
+    __forceinline
+        static void search(DFTaskPtr task, MKL_INT n, const float *zp, MKL_INT *rp, const float* datahint)
+    {
+        dfsSearchCells1D(task, DF_METHOD_STD, n, zp, DF_NO_HINT, datahint, reinterpret_cast<MKL_INT*>(rp));
+    }
+
+    static int dfNewTask1D(DFTaskPtr& task, MKL_INT n, float *px)
+    {
+        return dfsNewTask1D(&task, n, px, DF_QUASI_UNIFORM_PARTITION, 0, 0, 0);
+    }
+};
+
+template <class T>
+class MKLMethodInfo
+{
+public:
+    DFTaskPtr m_task;
+    T m_datahint[5];         // additional info about the structure
+
+    ~MKLMethodInfo()
+    {
+        if (m_task)
+            dfDeleteTask(&m_task);
+    }
+
+    MKLMethodInfo(const std::vector<T>& x)
+    {
+        MKL_INT n = static_cast<MKL_INT>( x.size() );
+        static char sizeguard[sizeof(MKL_INT)==sizeof(uint32)?1:-1];
+        if (sizeof(MKL_INT) != sizeof(uint32))
+            throw;
+
+        m_datahint[0] = 1;
+        m_datahint[1] = (T)DF_APRIORI_MOST_LIKELY_CELL;
+        m_datahint[2] = 0;
+        m_datahint[3] = 1;
+        m_datahint[4] = (T)((x.size() / 2) + 1);
+
+        int status = MKLTraits<T>::dfNewTask1D(m_task, n, const_cast<T*>(&x[0]) );
+        if (status != DF_STATUS_OK)
+            throw;
+    }
+
+};
+
+
+
+#endif
 
 
 // Auxiliary informatio specifically used in the optimized binary search
@@ -176,6 +248,57 @@ struct DirectMethodInfo
 // ***************************************
 // Naive method
 //
+
+
+#ifdef USE_MKL
+
+template <class T>
+class MKLExpr
+{
+public:
+    static const uint32 VecSize = NZ;
+
+    __forceinline
+        void init0(RawData<T>& p, const MKLMethodInfo<T>& info)
+    {
+        ri = p.rptr();
+        zi = p.zptr();
+        xi = p.xptr();
+        m_task = info.m_task;
+        m_datahint = info.m_datahint;
+    }
+
+    __forceinline
+        void initN(RawData<T>& p, const MKLMethodInfo<T>& info)
+    {
+        init0(p, info);
+    }
+
+    __forceinline
+    void scalar(uint32 j) const
+    {
+        MKLTraits<T>::search(m_task, 1, zi + j, reinterpret_cast<MKL_INT*>(ri + j), m_datahint);
+        ri[j] -= 1;
+    }
+        
+    __forceinline
+    void vectorial(uint32) const
+    {
+        MKLTraits<T>::search(m_task, NZ, zi, reinterpret_cast<MKL_INT*>(ri), m_datahint);
+        for (uint32 i = 0; i < NZ; ++i)
+            ri[i] -= 1;
+    }
+
+    
+protected:
+    uint32 * ri;
+    const T* zi;
+    const T* xi;
+    DFTaskPtr m_task;
+    const T *m_datahint;
+};
+
+#endif
 
 template <class T>
 class BinSearchExpr
@@ -504,15 +627,18 @@ void testAll(const std::string label)
 
         std::cout << "Trial no. " << i << " in " << label << " precision\n";
 
-        RawData<T> d( NX, intMin, intMax );
+        RawData<T> d( intMin, intMax );
 
-        testresults.push_back(runTest< T, ScalarTest<T,NaiveMethodInfo,BinSearchExpr> >("naive  scalar     " + label, d));
-        testresults.push_back(runTest< T, VectorTest<T,NaiveMethodInfo,BinSearchExpr> >("naive  vector     " + label, d));
-        testresults.push_back(runTest< T, ScalarTest<T,BitMethodInfo,  BitExpr>       >("bit    scalar     " + label, d));
-        testresults.push_back(runTest< T, VectorTest<T,BitMethodInfo,  BitExpr>       >("bit    vector 128 " + label, d));
-        testresults.push_back(runTest< T, ScalarTest<T,DirectMethodInfo, DirectExpr>  >("direct scalar     " + label, d));
-        testresults.push_back(runTest< T, VectorTest<T, DirectMethodInfo, DirectExpr> >("direct vector 128 " + label, d));
-
+        testresults.push_back(runTest< T, ScalarTest<T,NaiveMethodInfo,BinSearchExpr> >("naive  scalar      " + label, d));
+        testresults.push_back(runTest< T, VectorTest<T,NaiveMethodInfo,BinSearchExpr> >("naive  vector      " + label, d));
+        testresults.push_back(runTest< T, ScalarTest<T,BitMethodInfo,  BitExpr>       >("bit    scalar      " + label, d));
+        testresults.push_back(runTest< T, VectorTest<T,BitMethodInfo,  BitExpr>       >("bit    vector SSE2 " + label, d));
+        testresults.push_back(runTest< T, ScalarTest<T,DirectMethodInfo, DirectExpr>  >("direct scalar      " + label, d));
+        testresults.push_back(runTest< T, VectorTest<T, DirectMethodInfo, DirectExpr> >("direct vector SSE2 " + label, d));
+#ifdef USE_MKL
+        testresults.push_back(runTest< T, ScalarTest<T, MKLMethodInfo, MKLExpr>  >     ("MKL scalar         " + label, d));
+        testresults.push_back(runTest< T, VectorTest<T, MKLMethodInfo, MKLExpr> >      ("MKL vector         " + label, d));
+#endif
         std::cout << "\n";
     }
 
