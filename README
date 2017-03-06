@@ -1,0 +1,12 @@
+There are various way to compile the project.
+
+VisualStudio 2015
+The project by default compiles for AVX. Define NOAVX if you do not want it.
+MKL is disabled by default. Define USE_MKL and add the appropriate LIB and INCLUDE paths if you want it.
+
+GCC
+Makefile is in the source directory
+It compiles both on cygwin and linux
+You need a quite recent version of g++
+MKL is used only if MKLROOT is defined. Tested only in Linux with dynamic linking. Need to define LD_LIBRARY_PATH.
+

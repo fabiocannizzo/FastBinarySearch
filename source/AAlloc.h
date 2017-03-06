@@ -1,7 +1,10 @@
+#pragma once
 
-template <class T, size_t A>
+template <class T>
 struct AlignedVec
 {
+    static const size_t A = 64;  // size of cache line
+
     AlignedVec()
         : m_data(0)
         , m_sz(0)
@@ -29,6 +32,7 @@ struct AlignedVec
 
     size_t size() const { return m_sz; }
     T& operator[](size_t i) { return m_data[i]; }
+    const T& operator[](size_t i) const { return m_data[i]; }
     T* begin()  { return &m_data[0];  }
     T* end()  { return &m_data[0]+m_sz; }
     T& front() { return m_data[0]; }

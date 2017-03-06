@@ -1,40 +1,54 @@
-// get CPUID capability 
+#pragma once
 
+namespace Details {
+
+template <int N>
+struct Body
+{
+    template <class Expr>
+    FORCE_INLINE static void iteration(const  Expr& e, uint32 j )
+    {
+        static const uint32 D = Expr::VecSize;
+
+        e.vectorial( j );
+        Body<N-1>::iteration( e, j+D );
+    }
+
+};
+
+template <>
+struct Body<0>
+{
+    template <class Expr>
+    FORCE_INLINE static void iteration( const Expr& e, uint32 j )
+    {
+    }
+};
+
+} // namespace Details
 
 
 template <class Expr>
-class Loop
+struct Loop
 {
-	static const uint32 M = 4;
-	static const uint32 D = Expr::VecSize;
+    FORCE_INLINE static void loop( const Expr& e, uint32 n )
+    {
+        static const uint32 M = 4;
+        static const uint32 D = Expr::VecSize;
 
-	template <int N>
-	__forceinline static void body(const  Expr& e, uint32 j )
-	{
-		e.vectorial( j );
-		e.body<N-1>( e, j+D );
-	}
-
-	template <>
-	__forceinline static void body<0>( const Expr& e, uint32 j )
-	{
-	}
-
-public:
-	__forceinline static void loop( const Expr& e, uint32 n )
-	{
-		uint32 j = 0;
-		while ( j + (D*M) <= n ) {
-			body<M>( e, j );
-			j += (D*M);
-		}
-		while ( j + D <= n ) {
-			e.vectorial( j );
-			j += D;
-		}
-		while ( j < n ) {
-			e.scalar( j );
-			j += 1;
-		}
-	}
+        uint32 j = 0;
+        while ( j + (D*M) <= n ) {
+            Details::Body<M>::iteration( e, j );
+            j += (D*M);
+        }
+        while ( j + D <= n ) {
+            e.vectorial( j );
+            j += D;
+        }
+        while ( j < n ) {
+            e.scalar( j );
+            j += 1;
+        }
+    }
 };
+
