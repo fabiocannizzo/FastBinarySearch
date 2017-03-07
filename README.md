@@ -10,8 +10,10 @@ The general solution to this problem is the binary search algorithm, which has c
 
 In some special cases, when either the X[i] or the Z[j] numbers exhibit particular patterns, more efficient algorithms are available. Examples are when the numbers X[i] are equally spaced or when the numbers Z[j] are sorted, where the problem can be solved with complexity O(M) and O(M+N) respectively. However no generic alternative exists.
 
-This paper describes an improvement to the binary search algorithm, which avoid the control flow branch, thus making it generally faster. The complexity of the algorithm is still O(M log_2 N), but performance improves by a proportionality factor a/d, where a is a constant smaller than one associated with the performance gain due to the removal of the branch and, d is the number of floating point numbers which can be processed simultaneously (assuming perfect vectorization) and depends on the chosen set of vectorial instructions and floating point representation (e.g. with SSE instructions in single precision d=4). 
+This paper describes improvements to the binary search algorithm, which make it faster and vectorizable.
 
-Next it proposes a new vectorizable algorithm based on a indexing technique, which reduces complexity of search operations to O(M), at the cost of introducing an initial overhead to compute the index and requiring extra memory for its storage. The algorithm has general applicability, but the relative magnitude of such extra costs, which are related to the layout of the numbers X[i], in some particular cases might make its use not efficient.
+Next it proposes a new vectorizable algorithm applicable to a wide set of X partitions, which is based on an indexing technique and allows to solve the problem with complexity O(1) per individual search at the cost of introducing an initial overhead to compute the index and requiring extra memory for its storage.
 
-Some benchmark test results reproducible with the source code in this repository demonstrate that the proposed algorithm is about 26 times faster than the classical binary search in single precision and 15 times faster in double precision (test results are dependent on the hardware used).
+Test results using streaming SIMD extensions compare the performance of the algorithm versus various benchmarks and demonstrate its effectiveness. Depending on the test case, the algorithm performs up to 43 times faster than the classical binary search in single precision and 39 times faster in double precision.
+
+Applicability limitations and cache-friendliness related aspects are also discussed.
