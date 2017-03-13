@@ -58,7 +58,7 @@ struct DataWorkspace
                 if(m_x[i] > xold)
                     break;
                 else {
-                    assert(false);
+                    myassert(false, "non distingushable D_i");
                     factor *= T(1.01);
                 }
             };

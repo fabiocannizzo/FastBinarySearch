@@ -1,0 +1,1090 @@
+\documentclass[preprint,1p,times]{elsarticle}
+%\usepackage{a4wide}
+%\usepackage{graphicx}
+%\usepackage{amsfonts}
+%\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{centernot}
+%\usepackage{algorithmicx}
+\usepackage{amssymb}
+\usepackage{amsmath}
+%\usepackage{listings}
+%\usepackage[T1]{fontenc}
+%\usepackage{float}
+%\usepackage[utf8]{inputenc}
+%\usepackage[english]{babel}
+%\usepackage[margin=0.8in]{geometry}
+%\usepackage[pdftex]{hyperref}
+
+\journal{Journal of Parallel and Distributed Computing}
+
+\begin{document}
+
+\newcommand {\curle}[1]{ \left \{      #1 \right \}      }
+\newcommand {\floor}[1]{ \left \lfloor #1 \right \rfloor }
+\newcommand {\ceil} [1] { \left \lceil  #1 \right \rceil  }
+\newcommand {\fin}  {\textbf{input:\;}}
+\newcommand {\fout} {\textbf{output:\;}}
+\newcommand {\next} [1] {\phi\left(#1\right)}
+
+\begin{frontmatter}
+\title{Fast and Vectorizable Alternative to Binary Search in $O(1)$ Applicable to a Wide Domain of Sorted Arrays of Floating Point Numbers}
+
+\author{Fabio Cannizzo\footnote{DISCLAIMER: Although Fabio Cannizzo is employed by Standard Chartered at the time this paper is written, this paper has been produced by Fabio Cannizzo in a personal capacity and Standard Chartered is not associated or responsible for its content in any way.}}
+
+\begin{abstract}
+Given an array $X$ of $N+1$ strictly ordered floating point numbers\footnote{a floating point number is a rationale number which can be represented exactly on a computer given a chosen floating point representation} and an array $Z$ of $M$ floating point numbers belonging to the interval $[X_0,X_N)$, a common problem in numerical methods is to find the indices of the largest numbers in the array $X$ which are smaller or equal than the numbers in the array $Z$. The general solution to this problem is to call $M$ times the well known \textit{binary search} algorithm, which has complexity $O(log_2 N)$ per individual search and, in its classic formulation, is not vectorizable, i.e. it is not SIMD friendly. This paper describes technical improvements to the binary search algorithm, which make it faster and vectorizable. Next it proposes a new vectorizable algorithm applicable to a wide set of $X$ partitions, which is based on an indexing technique and allows to solve the problem with complexity $O(1)$ per individual search at the cost of introducing an initial overhead to compute the index and requiring extra memory for its storage. Test results using streaming SIMD extensions compare the performance of the algorithm versus various benchmarks and demonstrate its effectiveness. Depending on the test case, the algorithm performs up to 43 times faster than the classical binary search in single precision and 39 times faster in double precision. Applicability limitations and cache-friendliness related aspects are also discussed.
+\end{abstract}
+
+\begin{keyword}
+interpolation \sep spline \sep SIMD \sep SSE \sep vectorization \sep lower\_bound
+\end{keyword}
+
+\end{frontmatter}
+
+\section{Introduction}
+Given an array $X$ of strictly increasing floating point numbers $\curle{X_i}_{i=0}^{N}$  
+and a set of floating point numbers $\curle{Z_j}_{j=1}^M$ belonging to the interval $[X_0,X_N)$,
+a common problem in numerical methods algorithms is to find the indices of 
+the largest numbers in the array $X$ which are smaller or equal than the numbers $Z_j$.
+
+This problem arises for instance in the context of piece-wise interpolation, where a domain $[X_0,X_N)$ 
+is partitioned in sub-intervals $\curle{[X_{i},X_{i+1})}_{i=0}^{N-1}$ and different interpolation 
+functions $g_i(x)$ are associated with each sub-interval. To compute the interpolated value for a number
+$Z_j$, the index $i$ of the sub-interval containing it needs to be resolved first.
+
+This is a special case of the more general problem of searching in a sorted array for a matching element. The general solution to this problem is to call $M$ times the \textit{binary search} algorithm, which has complexity $O\left(M\;log_2N\right)$. An history of the \textit{binary search} algorithm is discussed in \cite{Knuth1997}, where the first published mention in the literature is attributed to J. Mauchly \cite{Mauchly1946}, who in 1946 proposed a binary search algorithm to find an exact match in a sorted array of length $2^N$. It is not until 1960 that a version of the algorithm that works for any $N$ was published by D. Lehmer \cite{Lehmer1960}. The next step was taken by Bottenbruch \cite{Bottenbruch1962}, who presented a variation of the algorithm that avoid a separate test for equality until the very end, thus speeding up the inner loop.
+
+A well known variation of Bottenbruch's algorithm, specialised to find the index of the largest numbers in the array $X$, which is smaller or equal than some number $z\in[X_0,X_N)$, is described by Press et al. \cite{NRC++} and is referred to in the sequel as the \textit{classical} version of the algorithm.
+This requires a control flow branch, which incurs penalties on many CPU architectures and is not vectorizable, i.e. it does not benefit from the vectorial capabilities of modern CPUs. Furthermore the algorithm is not cache-friendly as explained in Khuong \cite{Khuong2012} and Morin et al. \cite{Morin2015}.
+
+In some special cases, when either the $X_i$ or the $Z_j$ numbers exhibit particular patterns, more efficient algorithms are available. 
+Examples are when the numbers $X_i$ are equally spaced or when the numbers $Z_j$ are sorted, 
+and the problem can be solved with complexity $O(M)$ and $O(M+N)$ respectively. However no generic alternative exists.
+
+Many variations of the \textit{binary search} algorithm have been developed to improve \textit{binary search}. \textit{Fibonacci search}, proposed by J. Kiefer \cite{Kiefer1953} and D. Ferguson \cite{Ferguson1960}, has the same complexity as \textit{binary search}, but improve search time when some region of the array can be accessed faster than others. \textit{Exponential search}, proposed by Bentley et al. \cite{Bentley1976}, for a single search has complexity $O\left(log_2i\right)$ where $i$ is the sought index, but, due to increased computation cost, it becomes an improvement over \textit{binary search} only if the target value lies near beginning of the array. \textit{Ternary search} solves the problem in $log_3N$ iterations, but it is still less efficient than \textit{binary search}, because at every iterations it performs two comparisons instead of one, hence the total number of comparisons is $2\,log_3N\approx 1.26\,log_2N>log_2N$.  Several other variations have been analyzed by Morin et al. \cite{Morin2015} with the intent to reduce branch mis-prediction and cache misses.
+
+This paper describes technical improvements to two variations of the \textit{binary search} algorithm available in the literature, which makes them slightly faster and vectorizable. The complexity of the algorithms remains $O\left(M\;log_2N\right)$, but performance improves by a proportionality factor $\alpha/d$, where $\alpha$ is a constant smaller than one due to the performance improvements and $d$ is the number of floating point numbers which can be processed simultaneously\footnote{$d$ depends on the chosen set of vectorial instructions and floating point representation (e.g. with SSE instructions in single precision $d=4$)}, assuming perfect vectorization\footnote{perfect vectorization means that all scalar instructions used in the algorithm have a vectorial equivalent}. 
+
+Next it proposes a new vectorizable algorithm based on a indexing technique, which solves the problem with reduced complexity $O(M)$, at the cost of introducing an initial overhead to compute the index and requiring extra memory for its storage. Although the algorithm has fairly wide applicability, there are particular situations where the layout of the numbers $X_i$ might make its use unfeasible. These limitations are analysed and discussed and a variations of the algorithm which mitigate them at the cost of sacrificing some performance are introduced. A cache-friendly version of the algorithm is also proposed.
+
+%----------------------------------------------------------------------------------------------------------%
+\section{Problem Statement}
+\label{sec:definition}
+%----------------------------------------------------------------------------------------------------------%
+\noindent Let: 
+\begin{itemize}
+	\item $X$ be an array of $N+1$ floating point numbers sorted in ascending order, i.e. $X_{i-1}<X_{i}, \; i=1 \dots N$.
+	The array $X$ is assumed to be stored in a container supporting access by index in constant time. The numbers in $X$ exhibit no special pattern.
+	\item $Z$ be an unordered array of $M$ floating point numbers contained between the first and the last element of the array $X$, i.e. $Z_j \in \left[X_0, X_N \right)$, $j=0 \dots M-1$. Note that the exclusion of the last point $X_N$ does not imply any loss of generality, as $X_N$ could simply be replaced with the next larger floating point number.
+\end{itemize}
+for each number $Z_j$ the index $i$ of the largest element in the array $X$ such that $X_i \leq Z_j$ is sought. Such array of indices is denoted as $\curle{I_j}_{i=0}^{M-1}$. \\
+
+It is assumed that $M$ is large and memory is not scarce, therefore it is worth investing up-front in a preliminary analysis of the structure of the array $X$ and in the creation of an auxiliary data structure in order to later achieve superior computational performance when computing the indices $\curle{I_j}_{j=0}^{M-1}$.
+
+%----------------------------------------------------------------------------------------------------------%
+\section{Binary Search}
+%----------------------------------------------------------------------------------------------------------%
+
+\subsection{Classical Binary Search}
+\label{sec:binary}
+
+In absence of any special pattern of the values $X_i$, the classical solution to this problem is the \textit{binary search} algorithm, 
+which in scalar version has complexity $O( \log_2 N )$ per individual search.
+A simple scalar pseudo-code implementation is given in algorithm \ref{alg:naivealg}.
+
+\begin{algorithm}
+\caption{Classical Binary Search (scalar implementation)}
+\label{alg:naivealg}
+\begin{algorithmic}
+%\REQUIRE $N>0$
+%\REQUIRE $X_{i+1}>X_i, \;\forall i$
+%\REQUIRE $Z_j \in \left[ X_0, X_N \right)$
+\Function {BinarySearch}{\fin $z$,  $\curle{X_i}_{0}^{N}$, \fout $i$}
+\State $low\; \leftarrow 0$
+\State $high  \leftarrow N$
+\While {$high-low > 1$} \Comment {terminating condition depends indirectly on $z$}
+    \State $mid \leftarrow (low+high) / 2$
+    \If {$z < X_{mid}$}  \Comment {code branch}
+        \State $high \leftarrow mid$
+    \Else
+        \State $low \leftarrow mid$
+    \EndIf
+\EndWhile
+\State $i \leftarrow low$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+A close analysis of this implementation highlights the following weaknesses: 
+    the body of the loop contains a branch instruction and for an arbitrary $z$ the chances for the boolean 
+	condition to be \textit{true} are about $50\%$, which makes branch prediction algorithms used in modern CPUs ineffective; 
+	the algorithm is not easily vectorizable because, for different $z$ the boolean condition may resolve differently 
+    causing the program flow to take different code paths and possibly requiring a different number of iterations for the loop to complete.
+
+Because proper vectorization is not possible, a vectorial implementation is obtained trivially iterating on all elements of the array $Z$ in steps of one element, with complexity $O(M\,log_2N)$.
+
+\subsection{Binary Search Revisited}
+\label{sec:optimbinary}
+
+An improved variation of binary search proposed in \cite{Pulver2011} is based on the
+observations that some unnecessary extra iterations in the loop do not change the result and 
+that the maximum possible number of potentially required iterations is $\ceil{log_2N}$.
+
+Let $p$ be the number of bits necessary to represent the number $N$, which is $p=1+\floor{ log_2 N }$,
+    $b_k$ be the binary value taken by the $k$-th bit of the sought index $i$,
+    $c_k = 2^{k-1}$
+    and $a_k = b_kc_k$,
+the sought index $i$ has binary representation $\sum_{k=1}^{p}a_k$.
+
+The bits of the index can be resolved one by one starting from the highest order one as follows:
+first, if $z \geq X_{c_p}$ then the $p$-th bit of the sought index $i$ must be set, i.e. $b_p=1$, 
+next, if $z \geq X_{a_p+c_{p-1}}$ then the $(p-1)$-th bit of the index $i$ must be set, i.e. $b_{p-1}=1$, 
+and so on, the values of the remaining bits are obtained iterating the procedure.
+
+This yields to algorithm \ref{alg:revisited}, where the input argument $P$ is the precomputed constant $P=c_b=\floor{ log_2 N }$. The number of iterations is fixed to $p-1$, so no longer dependent on $z$, however, 
+as the algorithm proceeds it can happen that the candidate index of the vector $X$ exceeds the
+size of the vector, therefore, it requires a double boolean condition with short boolean evaluation, 
+which makes it difficult to vectorize.
+
+\begin{algorithm}[h]
+\caption{Binary Search Revisited (scalar implementation)}
+\label{alg:revisited}
+\begin{algorithmic}
+\Function {BitSetBinarySearch1}{\fin $z$,  $\curle{X_i}_{i=0}^{N}$, $P$, \fout $i$} \Comment{$P=2^{\floor{ log_2 N }}$}
+\State $i \leftarrow 0$
+\State $k \leftarrow P$
+\Repeat
+    \State $r \leftarrow i\;|\;k$ \Comment{bitwise OR}
+    \If {$r < N\; \&\& \; z \geq X_{r}$} \Comment{short boolean evaluation}
+        \State $i \leftarrow r$
+    \EndIf
+	\State $k \leftarrow k / 2$ \Comment{bitwise right shift}
+\Until{ $k=0$ }
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+%----------------------------------------------------------------------------------------------------------%
+\subsection{Vectorizable Binary Search Revisited}
+%----------------------------------------------------------------------------------------------------------%
+The first boolean condition in algorithm \ref{alg:revisited} can be avoided with a simple trick.
+Noting that $Z_j<X_N$ for any $j$, if the array $X$ is extended to the right side by padding 
+it with the last entry $X_N$ up to a size equal to the largest possible index representable with $p$ bits (i.e. $Q=2^p-1$), the condition $z \geq X_{r}$ would resolve to \textit{false} for any $r>N$ generated by the algorithm. 
+This introduces an extra memory requirement of about $(2^P-N)\,S$ bytes, where $S$ is the size in bytes of the elements of array $X$, i.e. 4 for single precision and 8 for double precision.
+
+This yields algorithm \ref{alg:binaryopt}, which has still complexity $O(log_2N)$, 
+but does not contain any code branch 
+(only a conditional assignment, which can be implemented efficiently with modern CPUs instruction set)
+and is easily vectorizable.
+
+\begin{algorithm}
+\caption{Vectorizable Binary Search Revisited (scalar implementation)}
+\label{alg:binaryopt}
+\begin{algorithmic}
+\Function {BitSetBinarySearch2}{\fin $z$,  $\curle{X_i}_{i=0}^{Q}$, $P$, \fout $i$} \Comment{$P=2^{\floor{ log_2 N }}$}
+\State $i \leftarrow 0$
+\State $k \leftarrow P$
+\Repeat
+    \State $r \leftarrow i\;|\;k$ \Comment{bitwise OR}
+    \If {$z \geq X_{r}$} 
+        \State $i \leftarrow r$    \Comment{conditional assignment}
+    \EndIf
+	\State $k \leftarrow k / 2$ \Comment{bitwise right shift}
+\Until{ $k=0$ }
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+A vectorial implementation is obtained vectorizing the function and iterating on all elements of the 
+array $Z$ in steps of $d$ elements, where $d$ is the number of floating point numbers which can be processed simultaneously\footnote{$d$ depends on the family of streaming SIMD extensions used and on the chosen number representation, 
+e.g. \textit{single} or \textit{double} precision.}. Note that, working with streaming SIMD extensions perfect vectorization is not achievable, because the indices contained in vector $r$ are not contiguous, therefore the $d$ elements of the vector $X_r$ must be fetched from memory sequentially.
+
+If memory is scarce, an alternative to extending and padding the array $X$ is to take at every iteration the maximum between $r$ and $N$ as the index of the element in $X$ used for comparison. This can be resolved by the compiler without branching as a conditional assignment and leads to algorithm \ref{alg:binaryoptnopad}. This however leads to a loss of performance, which is still superior to the classic \textit{binary search}, but inferior to algorithm \ref{alg:naiveoffset}, which is described in the next section and does not require any extra memory, therefore test results are not reported in section \ref{sec:testperf}.
+
+\begin{algorithm}
+\caption{Vectorizable Binary Search Revisited With No Padding (scalar implementation)}
+\label{alg:binaryoptnopad}
+\begin{algorithmic}
+\Function {BitSetBinarySearch3}{\fin $z$,  $\curle{X}_{i=0}^{N}$, $P$, \fout $i$} \Comment{$P=2^{\floor{ log_2 N }}$}
+\State $i \leftarrow 0$
+\State $k \leftarrow P$
+\Repeat
+    \State $r \leftarrow i\;|\;k$ \Comment{bitwise OR}
+    \State $w \leftarrow \min(r,N)$  \Comment{conditional assignment}
+    \If {$z \geq X_{w}$}
+        \State $i \leftarrow r$    \Comment{conditional assignment}
+    \EndIf
+	\State $k \leftarrow k / 2$ \Comment{bitwise right shift}
+\Until{ $k=0$ }
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Offset-Based Binary Search}
+A quite effective variation of the classic binary search algorithm is proposed in \cite{Morin2015}, where, as the search range is progressively bisected, its current coordinates are stored as a pair of \textit{start index} and \textit{range size}, as opposite to a pair of \textit{start index} and \textit{end index}. This allows to perform only one conditional assignment to update the \textit{start index}, as the size of the search range decreases deterministically by a factor $1/2$. Furthermore, the algorithm is already optimized to be branch-free.
+
+The algorithm presented here contains a technical improvement with respect to the original one proposed in \cite{Morin2015}, as the number of iterations is fixed and not dependent on the input data (as in algorithm \ref{alg:binaryopt}), thus allowing for vectorization and helping the branch predictor. Furthermore the problem solved in this paper is slightly different from the one solved in \cite{Morin2015}, which search for the index $i$ of the element of the array $X$ matching exactly the number $z$, which leads to more differences.
+
+The pseudo-code is presented in algorithm \ref{alg:naiveoffset}, where the search function receives in input the following pre-computed constants
+$$
+	\begin{array}{lll}
+		M=(N+1)/2 & & \text{mid index}  \\
+		S=N+1-M  & & \text{mid size} \\
+		J=\floor{\log_2(N+1)} & & \text{number of iterations}
+	\end{array}
+$$
+
+\begin{algorithm}
+	\caption{Offset Based Binary Search  (scalar implementation)}
+	\label{alg:naiveoffset}
+	\begin{algorithmic}
+		\Function {BinarySearchOffset}{\fin $z$,  $\curle{X_i}_{i=0}^{N}$, $F$, $S$, $J$ \fout $i$}
+		
+		\State $i \leftarrow 0$
+		\If {$z \geq X_F$ }  \Comment{Assume at least one iteration, i.e. $J>0$}
+			\State $i \leftarrow F$ \Comment{Conditional assignment}
+		\EndIf
+		\While {$J>0$}
+			\State {$J \leftarrow J-1$}
+			\State {$H \leftarrow S/2$}
+			\State {$F \leftarrow i+H$}
+			\If {$z >= X_F$}  \Comment{Conditional assignment}
+				\State {$i \leftarrow F$}
+			\EndIf
+			\State {$S \leftarrow F-H$}
+		\EndWhile
+		\EndFunction
+	\end{algorithmic}
+\end{algorithm}
+
+A vectorial implementation is obtained vectorizing the function and iterating on all elements of the 
+array $Z$ in steps of $d$ elements, where $d$ is the number of floating point numbers which can be processed simultaneously. Note that, working with streaming SIMD extensions perfect vectorization is not achievable, because the indices contained in vector $F$ of algorithm \ref{alg:naiveoffset} are not contiguous, therefore the $d$ elements of the vector $X_F$ must be fetched from memory sequentially.
+
+\subsection{Cache Friendly Binary Search}
+Modern CPUs exploit a small amount of integrated high performance memory called cache, which can be accessed much faster than the regular RAM. In simple terms this can be thought of as a temporary copy of various fragments of the RAM. Any data needed by the program is first sought in cache, and, if not found\footnote{when this is happens, it is said that a \textit{cache-miss} event occurs, which has performance penalties}, is uploaded from RAM to cache, then used. As the cache is small, every time something is loaded into it, in order to make space some other piece of data must be displaced.
+
+Because cache memory is extremely fast, it is beneficial for a program to carry out as much work as possible on a data set small enough to fit in cache, so that the accesses to RAM, which are expensive, are minimized. An algorithm designed with this property in mind is said to be \textit{cache friendly}. 
+
+The degree of efficiency in the use of cache memory for various formulation of comparison based search algorithms has been studied systematically in \cite{Morin2015}. The conclusion is that one of the most cache friendly implementation of the search algorithms relies on reordering the array $X$ according with a special layout, called \textit{Eytzinger layout} \cite{Eytzinger1590}.
+
+The algorithm incurs some setup cost to reorder the array $X$ and requires extra storage space to store it. An efficient implementation requires that the size of the original array $X$ is $2^L-1$ for some value $L$. Algorithm \ref{alg:eytzinger} describes the index search procedure, assuming that the Eytzinger layout has already been computed and stored in a new array $Y$. For an explanation of how the Eytzinger layout is organized, the reader is referred to \cite{Morin2015}.
+
+The problem solved in this paper is slightly different from the one solved in \cite{Morin2015}, which search for the index $i$ of the element of the array $X$ matching exactly the number $z$, therefore the algorithm proposed here is also slightly different. Furthermore, the array $Y$ is padded with the last element of the array $X_N$ until it reaches the size $2^L-1$, so that the algorithm does not require the introduction of checks on the index range and can work at its best efficiency. This trick, already used in algorithm \ref{alg:binaryopt}, does not affect results, because as part of the problem statement $z<X_N$.
+
+This introduces an extra memory requirement of about $(2^L-N)\,S$ bytes, where $S$ is the size in bytes of the elements of array $X$, i.e. 4 for single precision and 8 for double precision.
+
+The detailed search procedure is listed in algorithm \ref{alg:eytzinger}, which uses the following precomputed constants:
+\begin{align*}
+	L&=1+\floor{\log_2(2+N)} \\
+	M&= not \; (2L) \quad (not \text{ is the bitwise not operator})
+\end{align*}
+ 
+\begin{algorithm}
+	\caption{Eytzinger Search (scalar implementation)}
+	\label{alg:eytzinger}
+	\begin{algorithmic}
+		\Function {EytzingerSearch}{\fin $z$, $\curle{Y_i}_{i=0}^{2^{L+1}-2}$, $M$, $L$, \fout $i$} 
+		\State {$P \leftarrow 1$}
+		\If {$z \geq Y_0$}
+			\State {$P \leftarrow 2$}  \Comment {conditional assignment}
+		\EndIf
+		\While {$L>1$}
+			\State {$Q \leftarrow 1$}
+			\If {$z \geq Y_P$}
+				\State {$Q \leftarrow 2$}  \Comment {conditional assignment}
+			\EndIf
+			\State {$P \leftarrow 2P + Q$}
+			\State {$L \leftarrow L-1$}
+		\EndWhile
+		
+		\State {$i \leftarrow P \, \& \, M $} \Comment {bitwise AND}
+		
+		\EndFunction
+	\end{algorithmic}
+\end{algorithm}
+
+A vectorial implementation is obtained vectorizing the function and iterating on all elements of the 
+array $Z$ in steps of $d$ elements, where $d$ is the number of floating point numbers which can be processed simultaneously. Note that, working with streaming SIMD extensions perfect vectorization is not achievable, because the indices contained in vector $P$ of algorithm \ref{alg:eytzinger} are not contiguous, therefore the $d$ elements of the vector $X_P$ must be fetched from memory sequentially.
+
+%----------------------------------------------------------------------------------------------------------%
+\section{Direct Search}
+\label{sec:directmethod}
+%----------------------------------------------------------------------------------------------------------%
+A scalar algorithm with complexity $O(1)$ per individual search can be obtained via construction of an auxiliary function which maps real numbers $z\in[X_{0},X_{N})$ directly to the sought indices $i$ according with the following simple procedure.
+
+Let $f$ be a function which maps floating point numbers $z\in[X_{0},X_{N}]$ to natural numbers in $[0,R]$ for some value $R$ and satisfies the following properties
+\begin{subequations}
+\label{eq:fprop}
+\begin{align}
+&f(X_0)=0 \\
+&f(X_N)=R \label{eq:lastf} \\
+&\forall a,b \in[X_{0},X_{N}], \; a>b \implies f(a) \geq f(b) \label{eq:monotonic} \\
+&f(X_{i+1}) > f(X_i), &&\quad  i=0 \dots N-1 \label{eq:f-monotonic}
+\end{align}
+\end{subequations}
+Let $\curle{K_j}_{j=0}^R$ be a sorted array of natural numbers mapping the indices $j$ generated by function $f$ to indices of the array $X$ as follows
+\begin{equation}
+\label{eq:indexdef}
+K_{j}=\left\{ 
+	\begin{array}{ll}
+		0, & j=0 \\
+		i, & f(X_{i-1}) < j \leq f(X_i)
+	\end{array}
+\right.
+\end{equation}
+Possible pseudo-code to construct the array $K$ as specified in \eqref{eq:indexdef} is proposed in algorithm \eqref{alg:initk}.
+\begin{algorithm}
+	\caption{Initialization of array $K$ (pseudo-code)}
+	\label{alg:initk}
+	\begin{algorithmic}
+		\Function {InitK}{\fin $\curle{X_i}_{i=0}^{N}$, $f(z)$, \fout $\curle{K_j}_{j=0}^{R}$}
+		\State {$b \leftarrow R$}
+		\State {$i \leftarrow N$}
+		\While {$b \geq 0$}
+		\State {$t \leftarrow f(X_i)$}
+		\While {$b > t$}  \Comment{always false at the first iteration, when $i=N$}
+		\State {$K_b \leftarrow j$}
+		\State {$b \leftarrow b-1$}
+		\EndWhile
+		\If {$b = t$} \Comment{always true at the first iteration, when $i=N$, thus $j$ gets initialized}
+		\State {$j \leftarrow i$}
+		\State {$K_b \leftarrow j$}
+		\State {$b \leftarrow b-1$}
+		\EndIf
+		
+		\State $i \leftarrow i-1$
+		\EndWhile
+		\EndFunction
+	\end{algorithmic}
+\end{algorithm}
+The definition \eqref{eq:indexdef} of array $K$, implies the following property
+\begin{align}
+\label{eq:kidentity}
+   c=f(X_i) \; \implies \; K_c=i
+\end{align}
+Given a floating point number $z\in[X_{i},X_{i+1}\,)$, property \eqref{eq:monotonic} of function $f$ guarantees that
+$$
+ 	a=f(X_{i}) \leq j=f(z) \leq f(X_{i+1})=b,
+$$
+and property \eqref{eq:f-monotonic} implies that $a<b$. Because of \eqref{eq:kidentity} $K_a=i$ and $K_b=i+1$, hence the index $t=K_j$ can be either $i$ or $i+1$
+$$i = K_a \leq t=K_j \leq K_b = i+1$$
+Since $z\in[X_{i},X_{i+1}\,)$, if $t=i$ then $z \geq X_t$, while if $t=i+1$ then $z<X_t$, therefore the sought index can be trivially resolved comparing $z$ with $X_t$:
+$$
+i = 
+\left\{
+	\begin{array}{ll}
+		t-1 & \text{if } z < X_t,  \\
+		t   & \text{otherwise}
+	\end{array}
+\right.
+$$
+
+\subsection{Proposed Choice for the Function $f$}
+\label{sec:constructf}
+The search procedure described in section \ref{sec:directmethod} relies on the existence of a function $f$ satisfying properties \eqref{eq:fprop}. Since the largest possible value generated by the function is $R$, which defines the size of the array $\curle{K_j}_{j=0}^R$, in order to minimize storage space requirements and initialization cost, it is desirable for $R$ to be as small as possible. Furthermore, since function $f$ is used in the search routine, it is desirable for it to be computationally fast. \\
+
+A possible choice, not necessarily optimal, is to use the simple formula
+\begin{align}
+\label{eq:function}
+	f(z) = \floor{ H\, (z-X_0) }
+\end{align}
+where $H$ is an appropriately chosen constant.  This is clearly a computationally efficient function, as its evaluation requires only a multiplication, a subtraction and a truncation.
+
+Condition \eqref{eq:f-monotonic} requires that $H$ satisfies the inequalities
+\begin{align}
+\label{eq:fcond}
+	\floor{H\,(X_{i+1}-X_0)} > \floor{H\,(X_i-X_0)}, \quad  i=0 \dots N-1
+\end{align}
+and the truncation operation can be removed writing the more restrictive system of inequalities
+\begin{align}
+\label{eq:fcond9}
+	H\,(X_{i+1}-X_0) > 1+ H\,(X_i-X_0), \quad  i=0 \dots N-1
+\end{align}
+which yields the theoretical lower bound
+\begin{equation}
+\label{eq:minh}
+	H > \frac{1}{\min_i\curle{X_{i+1}-Xi}_{i=0}^{N-1}}
+\end{equation}
+Once a value for $H$ satisfying the lower bound \eqref{eq:minh} is chosen, $R$ is simply determined applying formula \eqref{eq:function} to $X_N$
+\begin{equation}
+\label{eq:minr}
+	R = \floor{H\,(X_{N}-X_0)}
+\end{equation}
+A possible value for the constant $H$ which strictly satisfy inequality \eqref{eq:minh} could be obtained as
+\begin{subequations}
+\label{eq:rhtheory}
+\begin{align}
+\label{eq:rtheory}
+	R &= 1+\ceil { \frac{X_N-X_0}{\min_i\curle{ X_{i}-X_{i-1} }_{i=1}^{N} } } \\
+\label{eq:htheory}
+        H &= \frac{R}{X_N-X_0}
+\end{align}
+\end{subequations}
+In reality, as explained in section \ref{sec:rounding}, because of rounding errors this is not a robust approach to determine $H$ and a different methodology must be used.
+
+Note that, because of the transformations performed of inequalities \eqref{eq:fcond} into more restrictive conditions, the lower bound $H$ proposed in \eqref{eq:minh} is not guaranteed to be optimal, i.e. it is not guaranteed to be the smallest possible value which would make function \eqref{eq:function} compatible with properties \eqref{eq:fprop}. For instance, given the array $X=\{0, 0.5, 0.7, 1.1\}$, equations \eqref{eq:minh} yields $H \approx 6.36$, however smaller values would also be admissible, e.g. $H=3$. The determination of the optimal value of $H$ satisfying properties \eqref{eq:fprop} is not addressed in this paper.
+
+\subsection{Algorithm}
+\label{sec:dirsearch}
+
+Summarizing, using the choice for function $f$ proposed in \eqref{eq:function}, for a given number $z\in [X_0,X_N)$ the index $i$ such that $z\in [X_i,X_{i+1})$ can be obtained with the following procedure, given in pseudo-code in algorithm \ref{alg:direct}:
+\begin{enumerate}
+	\item compute the index $j$ using \eqref{eq:function}
+	\item read the correspondent index $i$ stored in $K_j$
+	\item verify if the numbers $z$ is to the right or to the left of $X_i$, and, if it is to the left, decrement the index $i$ by one.
+\end{enumerate}
+Note that the last step does not involve any conditional jump. In the scalar case it can be resolved via conditional assignment. In the vectorial case with streaming SIMD extensions a floating point comparison operations returns a bit mask, which, if reinterpreted as a signed integer, is either $0$ or $-1$ and can be trivially added to $i$.
+
+\begin{algorithm}
+	\caption{Direct Search (scalar implementation)}
+	\label{alg:direct}
+	\begin{algorithmic}
+		\Function {DirectSearch}{\fin $z$, $\curle{X_i}_{i=0}^{N}$, $\curle{K_j}_{j=0}^{R}$, $H$ \fout $i$}
+		\State $j \leftarrow \floor{ H \, (z-X_0) }$
+		\State $i \leftarrow K_j$
+		\If {$z<X_{i}$}
+		\State $i \leftarrow i-1$ \Comment {conditional assignment}
+		\EndIf
+		\EndFunction
+	\end{algorithmic}
+\end{algorithm}
+
+Similarly to what already discussed for algorithm \ref{alg:binaryopt}, working with Intel SIMD instructions perfect vectorization is not achievable, as fetching from memory the relevant elements of $K_j$ and $X_i$ must be done sequentially.
+
+\subsection{Geometric Interpretation}
+\label{sec:geometric}
+
+The algorithm described in section \eqref{sec:dirsearch} has an intuitive equivalent geometric interpretation.
+Let $\curle{Y_j=X_0+j/H}_{j=0}^{R+1}$ be a fictitious array of equally spaced real numbers, the segments $\curle{[Y_{j},Y_{j+1})}_{j=0}^{R}$ have constant length $1/H$ and overlap with the segments $\curle{[X_{i},X_{i+1})}_{i=0}^{N-1}$.
+
+\noindent The function $j=f(z)$ defined in \eqref{eq:function} can be interpreted as the mapping from a real number $z\in [X_0,X_N)$ to the interval $[Y_{j},Y_{j+1})$ which contains it. 
+
+\noindent The array $\curle{K_j}_{j=0}^R$ defined in \eqref{eq:indexdef} can be interpreted as the mapping of the abstract segments $\curle{[Y_{j},Y_{j+1})}_{j=0}^{R}$ to elements of the array $X$ as described below and illustrated in figure \ref{pic:directmap}
+$$
+    K_j = \max_i \curle{ i: X_i \leq Y_{j+1} }_{i=1}^{N}
+$$
+
+Given a real number $z\in [X_0,X_N)$, the operations $j=f(z)$ and $t=K_j$, identify respectively the segment $[Y_{j},Y_{j+1})$ containing $z$ and an associated element $X_t$. Because of \eqref{eq:minh}, it is guaranteed that the segment $[Y_j,Y_{j+1})$ is smaller than the smallest segment $\min_i\curle{[X_{i},X_{i+1})}_{i=0}^{N-1}$, therefore it can contain at most one single element of the array $X$. This means that either $Y_j \leq X_t < Y_{j+1}$, implying that $z$ could be either to the left or to the right of $X_t$, or $X_t<Y_j$, implying that $z$ is always to the right of $X_t$. In both cases, the sought index $i$ is either $t$, if $z<X_t$, or $t-1$ otherwise.
+
+\setlength{\unitlength}{2mm}
+\begin{figure}[h]
+\begin {center}
+\begin{picture}(50,16)
+\linethickness{0.4mm}
+\put(0,3){\line(1,0){50}}
+\put(0,12){\line(1,0){50}}
+ 
+\linethickness{0.05mm}
+ 
+\multiput(0,2)(5,0){11} {\line(0,1){2}}
+\put(-0.5,0){$Y_0$}
+\put(4.5,0){$Y_1$}
+\put(9.5,0){$Y_2$}
+\put(14.5,0){$Y_3$}
+\put(19.5,0){$Y_4$}
+\put(24.5,0){$Y_5$}
+\put(29.5,0){$Y_6$}
+\put(34.5,0){$Y_7$}
+\put(39.5,0){$Y_8$}
+\put(44.5,0){$Y_9$}
+\put(49.5,0){$Y_{10}$}
+ 
+\put(0,11)  {\line(0,1){2}}
+\put(6,11)  {\line(0,1){2}}
+\put(15,11) {\line(0,1){2}}
+\put(23,11) {\line(0,1){2}}
+\put(31,11) {\line(0,1){2}}
+\put(37,11) {\line(0,1){2}}
+\put(50,11) {\line(0,1){2}}
+\put(-0.5,14){$X_0$}
+\put(5.5,14) {$X_1$}
+\put(14.5,14){$X_2$}
+\put(22.5,14){$X_3$}
+\put(30.5,14){$X_4$}
+\put(36.5,14){$X_5$}
+\put(49.5,14){$X_6$}
+ 
+\put(2.5,4) {\vector(-1,4){1.8}}
+\put(7.6,4) {\vector(-1,4){1.6}}
+\put(12.5,4){\vector(1,4){1.8}}
+\put(17.5,4){\vector(-1,4){1.8}}
+\put(23.2,4){\vector(0,2){6}}
+\put(27.5,4){\vector(-1,2){3.2}}
+\put(32.5,4){\vector(-1,4){1.5}}
+\put(37.3,4){\vector(0,1){6}}
+\put(42.5,4){\vector(-2,3){3.9}}
+\put(47.7,4){\vector(1,4){1.6}}
+ \end{picture}
+\caption{Mapping of segments $\curle{[Y_j,Y_{j+1})}_{j=0}^R$ to the points of the array $X$}
+\label{pic:directmap}
+\end {center}
+\end{figure}
+
+\subsection{Dealing with Floating Point Rounding Errors}
+\label{sec:rounding}
+
+Unfortunately the use of floating point arithmetic introduces a number of flaws in the procedure for the determination of $H$ and $R$ proposed in section \ref{sec:constructf}. 
+Some examples were computations fails are illustrated below.
+\begin{itemize}
+	\item Given the partition $X=\{-10^{9}, 0, 1\}$ in single precision, $X_2-X_0$ gets rounded to $10^9$ and it is effectively indistinguishable from $X_1-X_0$. Given function \eqref{eq:function}, regardless on the choice of $H$, it is impossible for property \eqref{eq:f-monotonic} to hold.
+	\item Given the array $X=\{0, 1.42\,10^{-45} ,1\}$ in single precision, equation \eqref{eq:rtheory} overflows and yeilds $R = +\infty$.
+\end{itemize}
+
+Before continuing the discussion, it is useful to introduce some well known facts and notations about floating point numbers (for a more comprehensive discussion on this topic see \cite{Goldberg1991}).
+
+\subsubsection{Facts and Notations about Floating Point Numbers}
+Floating point numbers are a finite subset of rationale numbers and in a floating point numerical system any real numbers is approximated with its closest floating point number.
+
+The result of an algebraic operations might not be a floating point numbers even if its operands are floating point numbers and it is therefore affected by a rounding error.
+
+Amongst real positive numbers, only those bounded in a certain interval can be approximated with floating point numbers. Numbers too small or too big respectively underflow to zero or overflow to the abstract concept of $+\infty$.
+
+Let: 
+\begin{itemize}
+\item $m(z)$ be the floating point approximation of a real number $z$
+\item $\phi(x)$ be the smallest floating point number greater than the floating point number $x$
+\item $\epsilon$ be the \textit{round-off error} associated with a given floating point representation, which is $\epsilon=2^{-24}$ in single precision and $\epsilon=2^{-53}$ in double precision
+\end{itemize}
+
+The relative rounding error made when a real number $x$ is approximated by the floating point number $m(x)$ is bounded by
+\begin{align}
+\label{eq:relerror}
+1-\epsilon \leq \frac{m(x)}{x} \leq 1+\epsilon
+\end{align}
+
+\subsubsection{Feasibility Conditions}
+The algebraic operations involved in the computation of \eqref{eq:function} and \eqref{eq:rhtheory} are in general affected by rounding errors, therefore it is not guaranteed that the value of $H$ they produce satisfies numerically condition \eqref{eq:fcond}.
+Taking into account rounding errors, conditions \eqref{eq:fcond} become
+\begin{align}
+\label{eq:cond1}
+	 \floor{ m(H\, m(X_{i+1}-X_0)) } >  \floor{ m(H\, m(X_{i}-X_0)) }, \quad i=0\dots N-1
+\end{align}
+A necessary condition for \eqref{eq:cond1} to hold is that the results of all arithmetic subtractions involved must be numerically distinguishable, i.e. strictly increasing:
+\begin{align}
+\label{eq:distinguishable-exact}
+	m(X_{i+1}-X_0) > m(X_{i}-X_0),   \quad i=0\dots N-1
+\end{align}
+Using \eqref{eq:relerror} and taking repeatedly lower bound of the left hand side and a upper bound of the right hand side, conditions \eqref{eq:distinguishable-exact} become
+\begin{align}
+	 (X_{i+1}-X_0)(1-\epsilon) &> (X_{i}-X_0)(1+\epsilon) ,   &&\quad i=0\dots N-1 \notag\\
+	X_{i+1}-X_i &> (X_{i+1}+X_{i}-2X_0)\,\epsilon ,   &&\quad i=0\dots N-1 \notag \\
+	\min_i\curle{X_{i+1}-X_i}_{i=0}^{N-1} &> (2X_N-2X_0)\,\epsilon  \notag \\
+\label{eq:distinguishable-approx}
+	 \dfrac{ \min_i\curle{X_{i+1}-X_i}_{i=0}^{N-1} }{X_{N}-X_0} &>2\epsilon
+\end{align}
+
+Assuming conditions \eqref{eq:distinguishable-exact} hold, conditions \eqref{eq:cond1} can be rewritten as a function of the rounded interval lengths $\curle{D_i=m(X_i-X_0)}_{i=0}^N$
+\begin{align}
+\label{eq:cond2}
+	 \floor{ m(H\, D_{i+1}) } >  \floor{ m(H\, D_i) }, \quad i=0\dots N-1
+\end{align}
+the truncation operation can be resolved writing a more restrictive set of inequalities, 
+\begin{align}
+\label{eq:cond3}
+	 m(H\, D_{i+1}) >  m(H\, D_i) + 1, \quad i=0\dots N-1
+\end{align}
+and the theoretical lower bound \eqref{eq:minh} can be approximated numerically as 
+\begin{align}
+\label{eq:minhnumeric}
+	H > \bar{H}
+		= m\left(\frac{1}{\min_i\curle{m(D_{i+1}-D_{i})}_{i=0}^{N-1}}\right)
+\end{align}
+
+The size of the array $K$ is $R=\floor{H\, X_N}$. In order to avoid numerical overflows, it must be $R < 2^{Q}$, where $Q$ is the number of bits used for the index returned by function \eqref{eq:function}. For the function \eqref{eq:function} to be efficiently vectorizable, it is desirable that $Q=32$ or $Q\in\curle{32,64}$ depending if the array $X$ is in single precision or in double precision. Note that $Q$ is not necessarily the same as the number of bits used to represent elements of the array $K$, which is discussed in section \ref{sec:memory}. This requires that
+\begin{align}
+\label{eq:overflowexact}
+m(H\, D_N) < 2^Q
+\end{align}
+Ignoring rounding errors, which might force $H$ to be slightly larger than the theoretical lower bound \eqref{eq:minh}, this limitation can be approximately expressed in terms of the layout of the original array $X$ as
+\begin{align}
+\label{eq:overflowapprox}
+\frac{X_N-X_0}{\min_i\curle{X_{i+1}-Xi}_{i=0}^{N-1}}< 2^Q
+\end{align}
+and the approximate feasibility conditions \eqref{eq:distinguishable-approx} and \eqref{eq:overflowapprox} can be combined in one single expression
+\begin{equation}
+\label{eq:feasibility}
+\frac{\min_i\curle{X_{i+1}-X_i}_{i=0}^{N-1}}{X_N-X_0} 
+    > \max \curle{2^{-Q}, 2\epsilon} 
+    = \left\{ \begin{array}{l}
+ 	   2^{-23},\text{   in single precision, with }Q=32 \\
+   	   2^{-32},\text{   in double precision, with }Q=32 \\
+   	   2^{-51},\text{   in double precision, with }Q=64
+    \end{array}\right.
+\end{equation}
+which approximately defines the family of arrays $X$ where the method is applicable.
+
+Note that conditions \eqref{eq:distinguishable-approx} and \eqref{eq:overflowapprox} are purely theoretical and cannot be verified exactly, because of rounding errors.
+It is however easy and inexpensive to verify directly the original conditions \eqref{eq:distinguishable-exact} and, given a value of $H$, \eqref{eq:overflowexact}.
+
+\subsubsection{Computation of a Feasible $H$}
+Both the value for $H$ computed in \eqref{eq:minhnumeric} and the evaluation of function \eqref{eq:function} are affected by rounding error, therefore there is no guarantee that choosing $H=\bar{H}$ conditions $\eqref{eq:cond2}$ are satisfied. Should they not be, a larger value of $H$ is needed.
+
+As discussed in section \ref{sec:constructf}, it is desirable for $H$ to be as small as possible. That poses the difficult question of \textit{how much larger should $H$ be?} There is no obvious answer and in the sequel a feasible value of $H$ is computed numerically, by increasing $H$ in small amounts in a trial and error iterative process. In brief, after a value for $H$ is chosen, the following two steps happen in a loop: condition $\eqref{eq:cond3}$ is tested for all $i$ and, if it does not hold, $H$ is progressively increased according with some growth strategy. 
+
+A possible growth strategy for $H$ is described in algorithm \ref{alg:pseudo-computeH}, which increments $H$ adding terms of exponentially increasing size, until a feasible value is found. 
+\begin{algorithm}
+	\caption{Computation of $H$ and $R$ (pseudo-code)}
+	\label{alg:pseudo-computeH}
+	\begin{algorithmic}
+		\Function {ComputeHR}{\fin $\curle{X_i}_{i=0}^{N}$ \fout $H$, $R$}
+			\State	$H \leftarrow \next{\bar{H}}$ \Comment{Initialize $H$ strictly larger than the approximate lower bound \eqref{eq:minhnumeric}}
+			\State {$D_{N} \leftarrow X_{N}-X_0$}
+			\If {$\floor{H\,D_N \geq 2^b}$} \Comment {Check for overflow verifying condition \eqref{eq:overflowexact}}
+				\State {\textbf{ERROR}: overflow, problem unfeasible}
+			\EndIf
+	     	\State {$P\leftarrow\next{H}-H$} \Comment{Define a growth term $P$}
+			\For {$i=1 \dots N$}
+				\State {$D_{i-1} \leftarrow X_{i-1}-X_0$}
+				\State {$D_{i}\;\;\; \leftarrow X_{i}\;\;\;-X_0$}
+					\If {$D_{i-1}=D_{i}$} \Comment {Verify that the sequence $D_i$ is strictly increasing}
+				\State {\textbf{ERROR}: $D_i$ are not strictly increasing, problem unfeasible}
+				\EndIf
+				\While {$\floor{H \, D_{i-1}}=\floor{H \, D_{i}}$} \Comment {Check if condition \eqref{eq:cond2} is satisfied}
+					\State {$H \leftarrow H+P$} \Comment{Increase $H$}
+					\If {$\floor{H\,D_N \geq 2^b}$} \Comment Check for overflow verifying condition \eqref{eq:overflowexact}
+						\State {\textbf{ERROR}: overflow, problem unfeasible}
+					\EndIf 
+					\State {$P \leftarrow 2P$} \Comment {Double the growth term $P$}
+				\EndWhile
+			\EndFor
+			\State $R \leftarrow \floor{H\, X_N}$ \Comment {Compute $R$}
+		\EndFunction
+	\end{algorithmic}
+\end{algorithm}
+
+A minor modification of algorithm \ref{alg:pseudo-computeH} would easily allow to also track the last unfeasible value for $H$, thus defining an interval $[H_{unfeasible},H_{feasible}]$ which is known to be unfeasible at its left extreme and feasible at its right extreme. Then instead of simply taking $H=H_{feasible}$, the solution could be refined further by bisecting this interval. This has not been implemented in this paper, as in all scenarios tested in section \ref{sec:setuptests}, $H$ is extremely rarely increased, and, when it is, the increment is negligible in relative terms.
+
+\subsection{Memory Cost}
+\label{sec:memory}
+Elements of the array $K$ must have a size $B$ in bytes sufficiently large to store the largest index of the array $X$, i.e. $N$. To allow efficient memory manipulation, it should be $B\in \curle{1,2,4,8}$, i.e.
+$$
+B = \min\curle{\,b \in \curle{1,2,4,8}: 2^{8b} \geq N\,}
+$$
+Algorithm \ref{alg:direct} requires the allocation of $R\cdot B$ bytes. The size $R$ of the array $K$, apart from numerical related considerations, is approximately \eqref{eq:rtheory}, therefore, the total memory cost in bytes can be estimated with a quite high degree of accuracy as
+$$
+	MemoryCost \approx \ceil{\frac{X_N-X_0}{\min_i\curle{X_{i+1}-X_i}_{i=1}^N}} B
+$$
+
+\subsection{Initial Setup Cost}
+\label{sec:setupcost}
+The initial setup is divided in two parts, the computation of $H$ performed in algorithm \eqref{alg:pseudo-computeH} and the initialization of the array $K$ carried out in algorithm \eqref{alg:initk}.
+
+The latter has computational complexity $O(N + \alpha R)$, as it requires evaluation of function \eqref{eq:function} for all elements of the array $X$ and an assignment for all elements of arrays $K$. The constant of proportionality $\alpha$ reflects the fact that the two operations do not have the same cost and it is $\alpha \ll 1$.
+
+It is more difficult to estimate precisely the computational complexity associated with the computation of $H$, as it is depends on the number of iterations of the inner loop in algorithm \eqref{alg:pseudo-computeH}, which increases $H$ if needed. In theory it is of order $O(N\,(1+T))$, where $T$ is the average number of iterations in the inner loop. In practice, experimental results in section \eqref{sec:setuptests} show that $T\approx 0$, so the overall complexity is approximately $O(N)$.
+
+The last component of the setup cost is the memory allocation of the array $K$, which is dependent on the programming language, the operating system and the memory allocation strategy used.
+
+In section \eqref{sec:setuptests} some test results for the total setup cost, inclusive of memory allocation using the default \textit{gcc} heap allocator, are reported.
+ 
+\subsection{Mitigating Limitations and Reducing Memory Consumption}
+\label{sec:bucketpairs}
+It is possible to reduce the memory consumed by the index and mitigate limitations by relaxing the requirements of properties \eqref{eq:f-monotonic} as follows
+\begin{align}
+\label{eq:f-monotonic-2}
+f(X_{i+2}) > f(X_i), &&\quad  i=0 \dots N-2
+\end{align}
+The definition of the index $K$ needs to be generalized as:
+\begin{align}
+\label{eq:kgeneral}
+	K_j = \max\{i: f(X_i) \leq j\}
+\end{align}
+From definition \eqref{eq:kgeneral}, it follows the properties
+\begin{subequations}
+\label{eq:kgeneralprop}
+\begin{align}
+\label{eq:kgeneralprop1}
+    a=f(X_{i})<f(X_{i+1})=b &\implies K_a=i \\
+\label{eq:kgeneralprop2}    
+    a=f(X_{i})=f(X_{i+1})=b &\implies K_a=K_b=i+1
+\end{align}
+\end{subequations}
+Note that the modified definition of the array $K$ does not require any change to algorithm \eqref{alg:pseudo-computeH}. \\
+
+Given a real number $z\in[X_{i},X_{i+1}\,)$, the sought index $i$ can be resolved as
+\begin{equation}
+\label{eq:index2}
+	i=K_j-I(z<X_t)-I(z<X_{t-1})
+\end{equation}
+where $j=f(z)$ and $I(w)$ is the indicator function
+$$
+	I(w)=\left\{\begin{array}{ll}
+		1, &\text{if $w$ is $true$} \\
+		0, &\text{otherwise}
+	\end{array}\right.
+$$
+The proof of this statement is more complicated than in the case discusses in section \ref{sec:directmethod}.
+Property \eqref{eq:monotonic} of function $f$ guarantees that
+$$
+ 	a=f(X_{i}) \leq j=f(z) \leq f(X_{i+1})=b,
+$$
+which implies
+\begin{equation}
+\label{eq:indexcond}
+K_a \leq t=K_j \leq K_b,
+\end{equation}
+There are three possible scenarios:
+\begin{enumerate}
+	\item if $f(X_{i})<f(X_{i+1})<f(X_{i+2})$, from property \eqref{eq:kgeneralprop1} it follows that $K_a=i$, $K_b=i+1$, and \eqref{eq:indexcond} implies $t \in \curle{i,i+1}$
+	\item if $f(X_{i})<f(X_{i+1}) \leq f(X_{i+2})$, from properties \eqref{eq:kgeneralprop} it follows that $K_a=i$, $K_b=i+2$, and \eqref{eq:indexcond} implies $t \in \curle{i,i+1,i+2}$
+	\item if $f(X_{i})\leq f(X_{i+1}) < f(X_{i+2})$, from properties \eqref{eq:kgeneralprop} it follows that $K_a=i+1$, $K_b=i+2$, and \eqref{eq:indexcond} implies $t \in \curle{i+1,i+2}$
+\end{enumerate}
+In all cases, $t$ can only have one of the values in the set $\curle{i,i+1,i+2}$:
+\begin{itemize}
+	\item if $t=i$, equation \eqref{eq:index2} yields: $i-I(z<X_i)-I(z<X_{i-1})=i-0-0=i$
+	\item if $t=i+1$, equation \eqref{eq:index2} yields: $i+1-I(z<X_{i+1})-I(z<X_{i})=i+1-1-0=i$
+	\item if $t=i+2$, equation \eqref{eq:index2} yields: $i+2-I(z<X_{i+2})-I(z<X_{i+1})=i+1-1-1=i$
+\end{itemize}
+which completes the proof. \\
+
+Ignoring rounding errors, condition \eqref{eq:fcond9} becomes
+\begin{align}
+\label{eq:fcond10}
+	H\,(X_{i+2}-X_0) > 1+ H\,(X_i-X_0), \quad  i=0 \dots N-1
+\end{align}
+yielding a smaller lower bound on $H$
+\begin{align}
+\label{eq:fcond10}
+	H > \frac{1}{\min_i\curle{X_{i+2}-Xi}_{i=0}^{N-2}}
+\end{align}
+which results in a smaller value of $R$ and therefore requires a smaller storage space for the auxiliary array $K$. Note that algorithm \ref{alg:pseudo-computeH} needs to be modified accordingly. \\
+
+
+Limitations are also mitigated as conditions \eqref{eq:feasibility} become
+\begin{equation}
+\frac{\min_i\curle{X_{i+2}-X_i}_{i=0}^{N-2}}{X_N-X_0} 
+> \max \curle{2^{-Q}, 2\epsilon} 
+= \left\{ \begin{array}{l}
+2^{-23},\text{   in single precision, with }Q=32 \\
+2^{-32},\text{   in double precision, with }Q=32 \\
+2^{-51},\text{   in double precision, with }Q=64
+\end{array}\right.
+\end{equation}
+which are clearly less restrictive. \\
+
+Summarizing, given the function $f$ and the array $\curle{K_j}_{j=0}^R$, the search procedure is described in algorithm \ref{alg:direct-2}.
+\begin{algorithm}
+	\caption{Direct Search Gap2 (scalar implementation)}
+	\label{alg:direct-2}
+	\begin{algorithmic}
+		\Function {DirectSearchGap2}{\fin  $z$, $\curle{X_i}_{i=0}^{N}$, $\curle{K_j}_{j=0}^{R}$, $H$, \fout $i$}
+		\State $j \leftarrow \floor{H\, (z-X_0)}$
+		\State $i \leftarrow K_j$
+		\If {$z<X_{t}$}
+			\State $i \leftarrow i-1$ \Comment {conditional assignment}
+		\EndIf
+		\If {$z<X_{t-1}$}
+			\State $i \leftarrow i-1$ \Comment {conditional assignment}
+		\EndIf
+		\EndFunction
+	\end{algorithmic}
+\end{algorithm}
+The algorithm is very similar to the one previously described, with the difference that the number $z$ needs to be compared with both $X_t$ and $X_{t-1}$, with consequent performance degradation, and the index $i$ could be accordingly decreased by 1 or 2. The second conditional assignment could be made contingent on the first condition $z<X_t$, but in this case the first condition would no longer just trigger a conditional assignment and become a genuine code flow branch, hence it is preferable to check the two conditions independently. The downside is that, if $t=0$, this causes access to the array element $X_{-1}$, therefore the array $X$ need to be padded to the left with one extra element containing the value $X_0$. This does not affect the correctness of the algorithm because the condition $z<X_0$ is always false. \\
+
+Note that this same idea could be pushed even further, generalizing condition \eqref{eq:f-monotonic} to
+\begin{align}
+\label{eq:f-monotonic-n}
+f(X_{i+q}) > f(X_i), &&\quad  i=0 \dots N-q
+\end{align}
+which requires comparisons of $z$ with $X_t, X_{t-1}, \dots, X_{t-q}$.
+
+This would allow to construct an optimal solution deriving the minimal number of $q$ which achieves a given memory budget.
+
+\subsection{Cache Efficient Implementation}
+Noting that in algorithm \ref{alg:directcache} the following two steps always occur in close sequence:
+\begin{enumerate}
+	\item the index $t=K_j$ is read from the array $K$
+	\item the element $X_t$ is read from the array $X$
+\end{enumerate}
+suggests to reorganize the data in memory so that $K_j$ and $X_t$ are stored contiguously in memory and part of the same cache line \footnote{a typical cache line is 64 bytes long and starts at memory addresses which are multiple of 64}. In this way, whenever $K_j$ is fetched, $X_t$ is loaded in cache at the same time and it is already available when it is needed for the execution of the next instruction, thus reducing the number of \textit{cache misses}.
+
+This is easily achieved modifying the data type stored in the array $K$ to be the pair of values $(K_j,X_t)$, appropriately padded so that their joint memory storage requirement is either 8 or 16 bytes to guarantee good cache line alignment. For instance working in single precision with 32-bit indices, the pair requires exactly 8 bytes, while working in double precision with 32-bit indices, the pair requires 12 bytes and an extra 4 bytes padding needs to be appropriately inserted. Obviously this algorithm has higher memory requirements than algorithm \ref{alg:direct}, as elements of the array $X$ are stored multiple times, plus there may be some wasted space for padding.
+
+The pseudo-code is illustrated in algorithm \ref{alg:directcache}.
+
+\begin{algorithm}
+	\caption{Direct Search Cache Friendly (scalar implementation)}
+	\label{alg:directcache}
+	\begin{algorithmic}
+		\Function {DirectSearchWithCache}{\fin $z$, $\curle{X_i}_{i=0}^{N}$, $\curle{K_j}_{j=0}^{R}$, $H$ \fout $i$}
+		\State $j \leftarrow \floor{ H \, (z-X_0) }$
+		\State {$(i,x) \leftarrow K_j$} \Comment {$K_j$ contains the pair of values $(i,X_i)$}
+		\If {$z<x$}
+			\State $i \leftarrow i-1$ \Comment {conditional assignment}
+		\EndIf
+		\EndFunction
+	\end{algorithmic}
+\end{algorithm}
+
+%----------------------------------------------------------------------------------------------------------%
+\section{Test Results}
+\label{sec:results}
+%----------------------------------------------------------------------------------------------------------%
+
+\subsection{Data Types Used}
+All tests results presented in this section are performed for arrays $X$ in \textit{single} and \textit{double} precision. 
+For simplicity of implementation, the indices used in algorithm \ref{alg:direct}, \ref{alg:direct-2} and \ref{alg:directcache} are always 32-bits \textit{unsigned integers}, regardless of the size of array $K$. Elements of the array $K$ are always 32-bits \textit{unsigned integers}, regardless of the size of the array $X$.
+
+\subsection{Array $X$ Layout}
+\label{sec:arrayx} 
+All tests results presented in this section are based on arrays $X$ of size $2^P-1$, for $P=\curle{4,8,12,16,20}$. The choice of this particular set of array sizes, near to powers of $2$, is simply aimed at optimizing memory usage for algorithms \ref{alg:binaryopt} and \ref{alg:eytzinger} and has no impact on performance measurements for algorithms \ref{alg:direct}, \ref{alg:direct-2} and \ref{alg:directcache}.
+
+Regardless of the size, all arrays $X$ are composed of sub intervals of random length $(X_{i+1}-X_i)$ sampled for each $i$ from a uniform distribution in $[1,5]$.
+
+The motivation associated with the choice of this particular layout is merely to assure that the feasibility condition \eqref{eq:feasibility} for algorithm \ref{alg:direct} is satisfied in probabilistic terms even for the largest size of the array $X$ tested. In fact, the expected length of an interval $\mathbb{E}[X_{i+1}-X_i]$ is $3$ and, when the size of the array $X$ is $N \approx 2^{20}$, condition \eqref{eq:feasibility} holds with good margin both in single and double precision
+\begin{align*}
+\frac{\min_i\curle{ X_{i}-X_{i-1} }_{i=1}^{N}}{X_N-X_0}
+\geq \frac{1}{X_N-X_0}
+\approx \frac{1}{\mathbb{E}[X_N-X_0]}
+=\frac{1}{3 \cdot 2^{20}} 
+= 1.5 \cdot 2^{-21}
+> 2^{-23}
+\end{align*}
+
+Furthermore, since the elements of the array $Z$ are uniformly distributed in $[X_0,X_{N})$, the choice of a layout $X$ with intervals of comparable length, assures that there is no major disproportion in the number of times each element of the array $X$ is picked, thus avoiding test results to be affected by cache memory related effects.
+
+Alternative layouts could be tested, and, with respect to algorithms \ref{alg:direct}, \ref{alg:direct-2} and \ref{alg:directcache}, they might lead to partitions either feasible or unfeasible, but this would make no difference for the performance measurements carried out, except perhaps for considerations associated with cache memory.
+
+\subsection{Performance Tests}
+\label{sec:testperf}
+\subsubsection{Performance Test Details}
+Tables \ref{tab:results0}-\ref{tab:results4} compare the throughput of various algorithms for arrays $X$ of increasing size, as described in section \ref{sec:arrayx}. Results obtained using the Intel Math Kernel Library (MKL), which uses a proprietary algorithm, are also included \footnote{The version of MKL used is 2017. The functions used are \textit{dfsSearchCells1D} in single precision and \textit{dfdSearchCells1D} in double precision. The partition $X$ is initialized with the \textit{QUASI\_UNIFORM} hint, which yields experimental results superior to the alternatives for the particular layouts of the array $X$ used in this test}.
+
+For most algorithms there are 3 possible implementations for each floating point representation, where the set of instructions used is either scalar or
+vectorial with vectors of 128 bits (Intel SSE instruction set) or 256 bits (Intel AVX instruction set). Exceptions are algorithms \ref{alg:naivealg}, where the vectorial implementation consists in simply calling in a loop the scalar implementation with \textit{function inlining} enabled, and $MKL$, where the scalar implementation consists in calling the vectorial implementation with vectors of size 1 and there is no way to force use of only SSE or AVX instructions. In both cases the same identical algorithm is used to produce the numbers reported in the SSE and in the AVX section.
+
+For each floating point representation and set of instructions the results are expressed as the number of indices resolved per unit of time. The setup-cost, for those algorithms requiring it, is excluded from the reported results. 
+
+The array $Z$ is stored aligned on a 32 bytes boundary, for efficient vectorial memory access. Its elements have no particular pattern and are randomly uniformly distributed in $[X_0,X_N)$.
+
+\subsubsection{Performance Test Observations}
+
+\paragraph{MKL}
+MKL performance is generally superior to classic binary search, but significantly inferior to any of the enhanced versions of binary search discussed. The scalar case in particular, for small arrays, is even slower than classic binary search.
+
+\paragraph{Enhanced Versions of Binary Search}
+The three enhanced versions of binary search (algorithms \ref{alg:binaryopt}, \ref{alg:naiveoffset} and \ref{alg:eytzinger}) for arrays of small to medium size exhibit comparable performance in the vectorial case and only minor differences in the scalar case, with algorithm \ref{alg:binaryopt} being faster. For large arrays, as expected, the cache friendly algorithm \ref{alg:eytzinger} beat the others. 
+
+\paragraph{Direct Search}
+All versions of direct search (algorithms \ref{alg:direct}, \ref{alg:direct-2}, \ref{alg:directcache}) yield a throughput increase of at least one order of magnitude with respect to binary search algorithms. This is no surprise given the difference in computational complexity. As expected, algorithm \ref{alg:direct-2} has slightly inferior performance than algorithm \ref{alg:direct}, due to the increased computation cost. Algorithm \ref{alg:directcache} performance is superior to all others for large vectors, where an efficient utilization of cache memory becomes critical.
+
+\paragraph{General Observations}
+All algorithms show a significant speed-up switching from the scalar to the SSE vectorial implementation, while switching from SSE to AVX leads to less consistent improvements, which vary with the algorithm, the precision and the array size.
+Note that the throughput increase factor achievable via vectorization is expected to be smaller than $d$. This is because, using Intel SIMD instructions, as explained in previous sections, perfect vectorization is not achievable.
+
+\subsection{Direct Search Setup Cost Test}
+\label{sec:setuptests}
+\subsubsection{Direct Search Setup Cost Test Details}
+As discussed in section \ref{sec:setupcost}, the setup cost is uncertain because of the unpredictable number of times $H$ is increased in the inner loop of \ref{alg:pseudo-computeH}. Therefore all test results in this section are described with statistical properties over populations of randomly generated arrays $X$.
+
+Table \ref{tab:results101} presents the number of times $H$ is increased in the inner loop of algorithm \ref{alg:pseudo-computeH}. A sample population of 10000 randomly generated arrays $X$ is used.
+
+Table \ref{tab:results100} presents the setup cost in nanoseconds normalized by the size of the array $X$. A sample population of 1000 randomly generated arrays $X$ is used.
+
+Multiplying the test results in table \ref{tab:results100} for the array size yields the average setup time in nanoseconds. This allow for a direct comparison with the results presented in tables  \ref{tab:results0}-\ref{tab:results4}, which are expressed in million of searches per seconds, making it possible to express the setup costs in terms of equivalent number of searches.
+
+\subsubsection{Direct Search Setup Cost Test Observations}
+Table \ref{tab:results101} shows that the number of times $H$ is increased in the inner loop of algorithm \ref{alg:pseudo-computeH} is independent on $N$. At most one iteration is carried out, regardless of the size of the array $X$. This implies that the initial guess \eqref{eq:minhnumeric} is acceptable in almost all cases and, when an increase is necessary, that is negligible in relative terms. Hence the approximate limiting conditions \eqref{eq:feasibility} which is derived from \eqref{eq:minhnumeric} have good general accuracy.
+
+Table \ref{tab:results100} shows that the setup cost normalized by the size of the array $X$, initially decreases as the size of the array $X$ grows, but then it increases until it stabilize on an asymptotic level.
+
+The initial decrease can be explained as the effect of the fixed overhead associated with the algorithm, due for instance to the allocation of memory for the array $K$, which is material for a small array, but gets amortized over larger arrays. 
+
+The subsequent increase can be explained by the larger amount of total memory necessary to store the arrays $X$ and $K$, which results in progressively inefficient use of the cache memory.
+
+From these experimental results it is possible to conclude that, a part from memory I/O effects, the setup cost per element is independent on $N$, i.e. the setup has complexity $O(N)$.
+
+\subsection{Reproducibility}
+All test results presented in section \ref{sec:results} have been produced using the C++ source code publicly available from  github\footnote{https://github.com/fabiocannizzo/fastbinarysearch.git}, compiled for Linux 64-bits platform
+with gcc 6.3.1 on a machine with AVX-2 capability\footnote{CPU model: Intel(R) Xeon(R) CPU E5-2666 v3 @ 2.90GHz}.
+
+% --------------------------------------------------- SETUP TABLE END -------------------------------------------------------------------------------
+
+\section{Conclusion}
+Possible improvements to the classic binary search algorithm have been described. Although having the same asymptotic complexity, these are vectorizable and generally faster.
+
+Next a new algorithm with superior asymptotic complexity has been presented. Test results using streaming SIMD extensions demonstrate that with arrays $X$ of various length randomly populated the proposed algorithm is up to 43 times faster than the classical binary search in single precision and up to 39 times faster in double precision.
+
+A cache friendly version of the algorithm is also proposed, which in most cases leads to even superior performance.
+
+There are situations where the algorithm is not applicable. These are extensively discussed and can be inexpensively identified in the preliminary analysis phase, thus allowing fall-back to some of the enhanced versions of the binary search algorithm. Possible variations of the algorithm, which mitigate such limitations sacrificing some performance or reduce cache misses at the cost of requiring more memory, have also been proposed.
+
+%----------------------------------------------------------------------------------------------------------%
+\begin{thebibliography}{9}
+%----------------------------------------------------------------------------------------------------------%
+\section{References}
+\bibitem{Pulver2011} 2011, Pulver, Binary Search Revisited, URL: http://eigenjoy.com/2011/09/09/binary-search-revisited/
+\bibitem{Morin2015} 2015, P. Khuong, P. Morin, Array Layout for Comparison Based Searching, ARXIV
+\bibitem{Knuth1997} 1997, D. Knuth, Sorting and Searching, volume 3 of The Art of Computer Programming. Addison-Wesley, second edition.
+\bibitem{NRC++} 2007, W. Press, S. Teukolsky, W. Vetterling, B.Flannery, Numerical Recipes, The Art of Scientific Computing, Sections 3.1, Third Edition, Cambridge University Press
+\bibitem{Goldberg1991} 1991, D. Goldberg, What Every Computer Scientist Should Know About Floating-Point Arithmetic, Computing Surveys, Association for Computing Machinery
+\bibitem{Johnson1982} 1982, L. Johnson, R. Riess, Numerical Analysis, Second Edition, Addison Wesley
+\bibitem{IEE754} 2008-754 IEEE Standard for Floating-Point Arithmetic, The Institute of Electrical and Electronics Engineers, 2008
+\bibitem{Khuong2012} 2012, P. Khuong, Binary search is a pathological case for caches, Some Lisp, URL: http://www.pvk.ca/Blog/2012/07/30/binary-search-is-a-pathological-case-for-caches/.
+\bibitem{Mauchly1946} 1946, J. Mauchly, Theory And Techniques for Design of Electronic Digital Computers, Lectures given at the Moore School of Electrical Engineering
+\bibitem{Lehmer1960} 1960, D. H. Lehmer, Proceedings of Symposia in Applied Mathematics 10
+\bibitem{Bottenbruch1962} 1962, H. Bottenbruch, JACM 9
+\bibitem{Kiefer1953} 1953, J. Kiefer, Sequential minimax search for a maximum, Proc. American Mathematical Society 4, 502–506.
+\bibitem{Ferguson1960} 1960, D. Ferguson, Fibonaccian searching, Communications of the ACM, vol. 3, is. 12, p. 648
+\bibitem{Bentley1976} 1976, J. Bentley, A. Yao, An almost optimal algorithm for unbounded searching, Information Processing Letters. 5 (3): 82–87
+\bibitem{Eytzinger1590} 1590, M. Eytzinger, Thesaurus principum hac aetate in Europa viventium (Cologne)
+Aitsingero, Aitsingerum, Eyzingern.
+\end{thebibliography}
+
+% --------------------------------------------------- RESULTS  -------------------------------------------------------------------------------
+
+\newcommand{\testmode}[2] {
+	\begin{tabular}{c}
+		\textbf{#1} \\ \textbf{d=#2}
+	\end{tabular}
+}
+
+% --------------------------------------------------- RESULTS TABLES BEGIN -------------------------------------------------------------------------------
+
+\begin{table}[h]
+	\begin{tabular}{l | c c c | c c c |}
+		\cline{2-7}
+		& \multicolumn{3}{c|}{\textbf{Single Precision}} & \multicolumn{3}{c|}{\textbf{Double Precision}} \\
+		\cline{2-7}
+		& \testmode{Scalar}{1} & \testmode{SSE-4}{4} & \testmode{AVX-2}{8} & \testmode{Scalar}{1} & \testmode{SSE-4}{2} & \testmode{AVX-2}{4} \\
+		\hline
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naivealg}}          } &      48.30 &      48.96 &      51.28 &      47.67 &      50.86 &      49.47 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:binaryopt}}         } &     177.18 &     375.26 &     396.64 &     197.96 &     263.19 &     214.13 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naiveoffset}}       } &     180.45 &     369.56 &     396.06 &     182.14 &     255.83 &     213.23 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:eytzinger}}         } &     161.30 &     374.44 &     391.60 &     160.98 &     254.03 &     207.07 \\
+		\multicolumn{1}{|c|}{\textbf{MKL 2017}                              } &      34.55 &     167.08 &     167.55 &      31.70 &     152.89 &     151.93 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct}}            } &     331.11 &     726.62 &     728.05 &     330.27 &     492.58 &     553.76 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct-2}}          } &     207.78 &     576.57 &     607.32 &     207.08 &     410.46 &     453.70 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:directcache}}       } &     328.13 &     732.89 &     754.83 &     312.39 &     570.22 &     469.42 \\
+		\hline
+	\end{tabular}
+	\caption{Throughput in million of searches per second with vector $X$ of size 15}
+	\label{tab:results0}
+\end{table}
+
+\begin{table}[h]
+	\begin{tabular}{l | c c c | c c c |}
+		\cline{2-7}
+		& \multicolumn{3}{c|}{\textbf{Single Precision}} & \multicolumn{3}{c|}{\textbf{Double Precision}} \\
+		\cline{2-7}
+		& \testmode{Scalar}{1} & \testmode{SSE-4}{4} & \testmode{AVX-2}{8} & \testmode{Scalar}{1} & \testmode{SSE-4}{2} & \testmode{AVX-2}{4} \\
+		\hline
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naivealg}}          } &      20.55 &      20.40 &      20.50 &      20.45 &      19.94 &      20.46 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:binaryopt}}         } &      80.49 &     122.18 &     148.41 &      81.29 &      89.98 &      81.36 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naiveoffset}}       } &      73.47 &     122.87 &     148.01 &      74.05 &      90.36 &      81.15 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:eytzinger}}         } &      65.63 &     122.45 &     146.56 &      65.25 &      88.94 &      79.97 \\
+		\multicolumn{1}{|c|}{\textbf{MKL 2017}                              } &      24.95 &      83.44 &      83.50 &      22.43 &      84.18 &      84.21 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct}}            } &     331.26 &     722.33 &     728.57 &     330.16 &     491.94 &     554.18 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct-2}}          } &     207.68 &     575.63 &     605.53 &     206.71 &     409.92 &     451.44 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:directcache}}       } &     328.17 &     730.32 &     733.19 &     312.16 &     569.70 &     470.62 \\
+		\hline
+	\end{tabular}
+	\caption{Throughput in million of searches per second with vector $X$ of size 255}
+	\label{tab:results1}
+\end{table}
+
+\begin{table}[h]
+	\begin{tabular}{l | c c c | c c c |}
+		\cline{2-7}
+		& \multicolumn{3}{c|}{\textbf{Single Precision}} & \multicolumn{3}{c|}{\textbf{Double Precision}} \\
+		\cline{2-7}
+		& \testmode{Scalar}{1} & \testmode{SSE-4}{4} & \testmode{AVX-2}{8} & \testmode{Scalar}{1} & \testmode{SSE-4}{2} & \testmode{AVX-2}{4} \\
+		\hline
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naivealg}}          } &      14.08 &      14.15 &      14.16 &      13.95 &      13.87 &      14.10 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:binaryopt}}         } &      45.30 &      70.75 &      91.33 &      44.45 &      47.07 &      48.48 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naiveoffset}}       } &      42.98 &      70.96 &      91.14 &      41.82 &      47.39 &      48.42 \\		
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:eytzinger}}         } &      38.51 &      70.34 &      90.00 &      37.95 &      46.59 &      48.24 \\
+		\multicolumn{1}{|c|}{\textbf{MKL 2017}                              } &      21.57 &      53.52 &      53.54 &      19.23 &      51.65 &      51.65 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct}}            } &     309.78 &     642.61 &     618.90 &     302.05 &     427.90 &     487.01 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct-2}}          } &     195.31 &     544.69 &     548.09 &     186.98 &     352.28 &     396.78 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:directcache}}       } &     302.19 &     705.73 &     639.64 &     259.23 &     476.40 &     387.07 \\
+		\hline
+	\end{tabular}
+	\caption{Throughput in million of searches per second with vector $X$ of size 4095}
+	\label{tab:results2}
+\end{table}
+
+\begin{table}[h]
+	\begin{tabular}{l | c c c | c c c |}
+		\cline{2-7}
+		& \multicolumn{3}{c|}{\textbf{Single Precision}} & \multicolumn{3}{c|}{\textbf{Double Precision}} \\
+		\cline{2-7}
+		& \testmode{Scalar}{1} & \testmode{SSE-4}{4} & \testmode{AVX-2}{8} & \testmode{Scalar}{1} & \testmode{SSE-4}{2} & \testmode{AVX-2}{4} \\
+		\hline
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naivealg}}          } &       9.05 &       9.11 &       9.10 &       7.13 &       7.13 &       7.20 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:binaryopt}}         } &      20.89 &      28.86 &      38.04 &      12.81 &      11.92 &      15.47 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naiveoffset}}       } &      18.45 &      26.39 &      35.04 &      12.28 &      11.84 &      15.44 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:eytzinger}}         } &      22.31 &      44.63 &      50.08 &      17.55 &      25.73 &      22.52 \\
+		\multicolumn{1}{|c|}{\textbf{MKL 2017}                              } &      15.39 &      26.21 &      26.21 &      13.12 &      22.89 &      22.89 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct}}            } &     159.67 &     345.02 &     349.01 &     148.88 &     246.81 &     281.38 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct-2}}          } &     118.57 &     315.81 &     331.39 &     108.98 &     199.31 &     241.49 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:directcache}}       } &     239.46 &     547.16 &     511.86 &     218.39 &     394.57 &     333.06 \\
+		\hline
+	\end{tabular}
+	\caption{Throughput in million of searches per second with vector $X$ of size 65535}
+	\label{tab:results3}
+\end{table}
+
+\begin{table}[h]
+	\begin{tabular}{l | c c c | c c c |}
+		\cline{2-7}
+		& \multicolumn{3}{c|}{\textbf{Single Precision}} & \multicolumn{3}{c|}{\textbf{Double Precision}} \\
+		\cline{2-7}
+		& \testmode{Scalar}{1} & \testmode{SSE-4}{4} & \testmode{AVX-2}{8} & \testmode{Scalar}{1} & \testmode{SSE-4}{2} & \testmode{AVX-2}{4} \\
+		\hline
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naivealg}}          } &       4.59 &       4.62 &       4.62 &       3.70 &       3.70 &       3.73 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:binaryopt}}         } &       5.49 &      10.68 &      17.11 &       4.84 &       5.23 &       7.15 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:naiveoffset}}       } &       6.17 &      11.14 &      17.44 &       5.04 &       5.40 &       7.33 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:eytzinger}}         } &       9.44 &      18.79 &      23.76 &       7.94 &       9.98 &      10.95 \\
+		\multicolumn{1}{|c|}{\textbf{MKL 2017}                              } &       7.83 &       9.99 &       9.98 &       6.78 &       8.74 &       8.74 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct}}            } &      62.46 &      61.68 &      59.37 &      53.02 &      52.68 &      50.69 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:direct-2}}          } &      67.08 &      75.00 &      72.22 &      57.75 &      60.51 &      58.73 \\
+		\multicolumn{1}{|c|}{\textbf{Algorithm \ref{alg:directcache}}       } &     105.96 &      96.31 &      92.64 &      82.17 &      82.43 &      76.13 \\
+		\hline
+	\end{tabular}
+	\caption{Throughput in million of searches per second with vector $X$ of size 1048575}
+	\label{tab:results4}
+\end{table}
+
+
+% --------------------------------------------------- RESULTS TABLES END -------------------------------------------------------------------------------
+
+\begin{table}[h]
+	\begin{tabular}{| c | c c c c | c c c c |}
+		\cline{2-9}
+		\multicolumn{1} {c|}{}  & \multicolumn{4}{c|}{\textbf{Single Precision}}  & \multicolumn{4}{c|}{\textbf{Double Precision}} \\
+		\hline
+		\textbf{array size} & \textbf{mean} & \textbf{min} & \textbf{max} & \textbf{stdev} & \textbf{mean} & \textbf{min} & \textbf{max} & \textbf{stdev} \\
+		\hline
+		\multicolumn{1}{|c|}{\textbf{15}                                    } &     0.0061 &     0.0000 &     1.0000 &     0.0779 &     0.0048 &     0.0000 &     1.0000 &     0.0691 \\
+		\multicolumn{1}{|c|}{\textbf{255}                                   } &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0001 &     0.0000 &     1.0000 &     0.0100 \\
+		\multicolumn{1}{|c|}{\textbf{4095}                                  } &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 \\
+		\multicolumn{1}{|c|}{\textbf{65535}                                 } &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 \\
+		\multicolumn{1}{|c|}{\textbf{1048575}                               } &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 &     0.0000 \\
+		\hline
+	\end{tabular}
+	\caption{Number of $H$ updates}
+	\label{tab:results101}
+\end{table}
+
+\begin{table}[h]
+	\begin{tabular}{| c | c c c c | c c c c |}
+		\cline{2-9}
+		\multicolumn{1} {c|}{}  & \multicolumn{4}{c|}{\textbf{Single Precision}}  & \multicolumn{4}{c|}{\textbf{Double Precision}} \\
+		\hline
+		\textbf{array size} & \textbf{mean} & \textbf{min} & \textbf{max} & \textbf{stdev} & \textbf{mean} & \textbf{min} & \textbf{max} & \textbf{stdev} \\
+		\hline
+		\multicolumn{1}{|c|}{\textbf{15}                                    } &      10.24 &       8.96 &      11.59 &       0.47 &      11.81 &      10.11 &      13.31 &       0.49 \\
+		\multicolumn{1}{|c|}{\textbf{255}                                   } &       8.27 &       8.00 &       8.66 &       0.12 &       8.40 &       8.06 &       8.65 &       0.13 \\
+		\multicolumn{1}{|c|}{\textbf{4095}                                  } &      13.80 &      13.54 &      13.98 &       0.09 &      13.51 &      13.30 &      13.70 &       0.07 \\
+		\multicolumn{1}{|c|}{\textbf{65535}                                 } &      17.63 &      17.61 &      17.65 &       0.01 &      17.49 &      17.46 &      17.51 &       0.01 \\
+		\multicolumn{1}{|c|}{\textbf{1048575}                               } &      17.67 &      17.66 &      17.69 &       0.01 &      17.61 &      17.58 &      17.66 &       0.02 \\
+		\hline
+	\end{tabular}
+	\caption{Statistical setup cost for algorithm \ref{alg:direct} in nano seconds normalized by the array size}
+	\label{tab:results100}
+\end{table}
+
+\end{document}

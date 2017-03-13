@@ -19,6 +19,8 @@ typedef  __int64   int64;
 typedef unsigned __int64  uint64;
 #endif
 
+#define myassert(cond, msg) if (!cond) { cout << "\nassertion failed: " << #cond << ", " << msg << "\n"; exit(1); }
+
 // log2 is not defined in VS2008
 #if defined(_MSC_VER) && (_MSC_VER <= 1500)
 inline size_t log2 (size_t val) {
@@ -30,7 +32,7 @@ inline size_t log2 (size_t val) {
     }
     return ret;
 }
-#define static_assert(a,b) assert(a)
+#define static_assert(a,b) myassert(a)
 #endif
 
 #ifdef _DEBUG

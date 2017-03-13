@@ -15,7 +15,7 @@ private:
             , m_maxdepth(maxdepth)
         {
             fill_n(m_index, sizeof(m_index)/sizeof(m_index[0]), -1);
-            assert(maxdepth>0);
+            myassert((maxdepth>0), "interval too small");
             build(0, m_e.size()-1, 0);
         }
 

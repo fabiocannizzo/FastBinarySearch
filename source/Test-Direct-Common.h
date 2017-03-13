@@ -31,7 +31,7 @@ HResults<T> computeH(const T *px, size_t nx)
 {
     T x0 = px[0];
     T range = px[nx - 1] - x0;
-    assert(range < numeric_limits<T>::max());
+    myassert((range < numeric_limits<T>::max()), "range too large");
 
     const T one = T(1.0);
 

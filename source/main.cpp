@@ -289,7 +289,7 @@ int main(int argc, char* argv[])
 
     cout << "Be patient, this test will take a few hours\n\n";
 
-#if 0
+#if 1
     // throughput tests
     cout << "Testing throughput\n";
     for (size_t i = 0; i < nVecs; ++i) {
@@ -300,7 +300,7 @@ int main(int argc, char* argv[])
     }
 #endif
 
-#if 0
+#if 1
     // Direct methods setup cost tests
     setup_t results[nVecs];
     cout << "Testing setup cost\n";
