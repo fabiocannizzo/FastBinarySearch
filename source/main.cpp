@@ -34,76 +34,49 @@
 
 using namespace std;
 
-//size_t rMin, rMax;
-
-template <Precision P, Algos A, InstrSet I>
-struct Tester
+template <typename T, InstrSet I>
+class Tester
 {
-    typedef typename PrecTraits<P>::type T;
-    typedef Info<P,A> info_t;
-    typedef ExprVector<P,A,I> expr_t;
-
-    static double run(DataWorkspace<P>& p,const info_t& info)
-    {
-        clock_t t1 = std::clock();
-        for (size_t t = 0; t < nRepeat; ++t)
-            singlerun(p,info);
-        clock_t t2 = std::clock();
-        p.checkAndReset(A,I);
-        return (nRepeat * p.m_z.size()) / (static_cast<double>(t2 - t1) / CLOCKS_PER_SEC);
-    }
-private:
+public:
+    template <bool Check, typename ALGO>
     NO_INLINE
-    static void singlerun(DataWorkspace<P>& p, const info_t& info)
+    static void singlerun(DataWorkspace<T>& p, const ALGO& info)
     {
-        expr_t e;
-        e.initN(p, info);
-        Loop< expr_t >::loop(e, static_cast<uint32>( p.m_z.size() ));
+        uint32 n = static_cast<uint32>(p.m_z.size());
+        Loop<I,ALGO>::loop(info, p.m_r.begin(), p.m_z.begin(), n);
     }
 };
 
 
-template <Precision P, Algos A>
-struct Tester<P, A, Scalar>
-{
-    typedef typename PrecTraits<P>::type T;
-    typedef Info<P,A> info_t;
-    typedef ExprScalar<P,A> expr_t;
+template <typename T>
+class Tester<T, Scalar>
+{    
+    template <typename ALGO>
+    NO_INLINE
+    static uint32 run(const ALGO& info, T zi)
+    {
+        return info.scalar(zi);
+    }
 
-    static double run(DataWorkspace<P>& p, const info_t& info )
+public:
+    template <bool Check, typename ALGO>
+    FORCE_INLINE
+    static void singlerun(DataWorkspace<T>& p, const ALGO& info)
     {
         size_t nz = p.m_z.size();
-        clock_t t1 = std::clock();
-        for (size_t t = 0; t < nRepeat; ++t) {
-            for (uint32 j = 0; j < nz; ++j)
-                singlerun(p, info, j);
+        uint32  *ri = p.m_r.begin();
+        uint32  *re = ri+nz;
+        const T *zi = p.m_z.begin();
+
+        for (; ri != re; ++zi, ++ri) {
+            *ri = run(info, *zi);
+            if (Check && !ok(*ri, &p.m_x[0], *zi)) {
+                *ri = run<ALGO>(info, *zi); // repeat calculations (conveninent for debugging)
+                error(*ri, std::distance(p.m_r.begin(),ri), &p.m_x[0], &p.m_z[0]);
+            }
         }
-        clock_t t2 = std::clock();
-        p.checkAndReset(A,Scalar);
-        return (nRepeat * nz) / (static_cast<double>(t2 - t1) / CLOCKS_PER_SEC);
     }
 
-private:
-    NO_INLINE
-    static void singlerun(DataWorkspace<P>& p, const info_t& info, uint32 j)
-    {
-#if defined(DEBUG)
-        int redo = 0;
-        do {
-#endif
-            expr_t e;
-            e.init0(p, info);
-            e.scalar(j);
-#if defined(DEBUG)
-            uint32 ri = p.m_r[j];
-            T zi = p.m_z[j];
-            if (!ok(ri, &p.m_x[0], zi)) {
-                ++redo;
-                error(ri, j, &p.m_x[0], &p.m_z[0]);
-            }
-        } while (redo == 1);
-#endif
-    }
 };
 
 
@@ -111,19 +84,40 @@ private:
    TEST DISPATCHING
 */
 
-// bridge with templates
-template <Precision P, InstrSet I, Algos A>
-double run4(DataWorkspace<P>& ws)
+template <typename T, InstrSet I, Algos A>
+struct Run4Traits
 {
-    Info<P,A> info(ws.m_x);
-    return Tester<P, A, I>::run(ws, info);
+    typedef Info<I, T, A> algo_t;
+};
+
+template <typename T, Algos A>
+struct Run4Traits<T,Scalar,A>
+{
+    typedef InfoScalar<T, A> algo_t;
+};
+
+// bridge with templates
+template <typename T, InstrSet I, Algos A>
+double run4(DataWorkspace<T>& ws)
+{
+    typedef typename Run4Traits<T, I, A>::algo_t algo_t;
+    
+    algo_t info(&ws.m_x[0], ws.m_x.size());
+    
+    Tester<T, I>::template singlerun<true>(ws, info);
+    clock_t t1 = std::clock();
+    for (size_t t = 0; t < nRepeat; ++t)
+        Tester<T, I>::template singlerun<false>(ws, info);
+    clock_t t2 = std::clock();
+    ws.checkAndReset(A,Scalar);
+    return (nRepeat * ws.m_z.size()) / (static_cast<double>(t2 - t1) / CLOCKS_PER_SEC);
 }
 
 
-#define ALGO_CASE(a)  case a: return run4<P, Instr, a>(ws);
+#define ALGO_CASE(a)  case a: return run4<T, Instr, a>(ws);
 
-template <Precision P, InstrSet Instr>
-double run3(Algos a, DataWorkspace<P>& ws)
+template <typename T, InstrSet Instr>
+double run3(Algos a, DataWorkspace<T>& ws)
 {
     switch(a) {
         ALGO_CASE(Classic);
@@ -145,16 +139,17 @@ double run3(Algos a, DataWorkspace<P>& ws)
 
 
 template <Precision P>
-double run2(InstrSet i, Algos a, DataWorkspace<P>& ws)
+double run2(InstrSet i, Algos a, DataWorkspace<typename PrecTraits<P>::type>& ws)
 {
+    typedef typename PrecTraits<P>::type T;
     switch(i) {
         case Scalar:
-            return run3<P,Scalar>(a, ws);
+            return run3<T,Scalar>(a, ws);
         case SSE:
-            return run3<P,SSE>(a, ws);
+            return run3<T,SSE>(a, ws);
 #ifdef USE_AVX
         case AVX:
-            return run3<P,AVX>(a, ws);
+            return run3<T,AVX>(a, ws);
 #endif
         default:
             throw "invalid instruction set";
@@ -172,7 +167,7 @@ struct RunThroughput {
         // run all tests
         for (size_t i = 0; i < nAvg; ++i) {
 
-            DataWorkspace<P> ws( T(INTMIN), T(INTMAX), VecScope[nx] );
+            DataWorkspace<T> ws( T(INTMIN), T(INTMAX), VecScope[nx] );
 
             for (size_t algoIndex = 0; algoIndex < nAlgo; ++algoIndex) {
                 for (size_t instrIndex = 0; instrIndex < nInstr; ++instrIndex) {
@@ -206,11 +201,11 @@ struct RunSetup {
         // run all tests
         for (size_t i = 0; i < nAvgSetup; ++i) {
 
-            DataWorkspace<P> ws( T(INTMIN), T(INTMAX), VecScope[nx] );
+            DataWorkspace<T> ws( T(INTMIN), T(INTMAX), VecScope[nx] );
 
             clock_t t1 = std::clock();
             for (size_t j = 0; j < nr; ++j)
-                Info<P,Direct> info(ws.m_x);
+                Info<SSE,T,Direct> info(ws.m_x);
             clock_t t2 = std::clock();
             double dt = ((static_cast<double>(t2 - t1) / nr) / CLOCKS_PER_SEC);
             if (dt==0) {
@@ -242,8 +237,8 @@ struct RunR {
 
         // run all tests
         for (size_t i = 0; i < nAvgSetupR; ++i) {
-            DataWorkspace<P> ws(T(INTMIN), T(INTMAX), VecScope[nx]);
-            Info<P, Direct> info(ws.m_x);
+            DataWorkspace<T> ws(T(INTMIN), T(INTMAX), VecScope[nx]);
+            Info<SSE, T, Direct> info(&ws.m_x[0], ws.m_x.size());
             statsInc.vec[i] = static_cast<double>(info.nInc);
             statsRatio.vec[i] = static_cast<double>(info.hRatio);
         }
@@ -312,7 +307,7 @@ int main(int argc, char* argv[])
     latex(results, 0, "Statistical setup cost for %s in nano seconds normalized by the array size", 1.0e9, "%.3f", true);
 #endif
 
-#if 1
+#if 0
     // Direct method check number of H grow
     setup_t resultsR[nVecs];
     cout << "Testing H growth\n";

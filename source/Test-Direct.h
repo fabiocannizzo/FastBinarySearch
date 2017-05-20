@@ -1,107 +1,87 @@
+#pragma once
+
 #include "Test-Direct-Common.h"
 
-template <Precision P>
-struct Info<P,Direct> : DirectAux::DirectInfo<1,P,Direct>
+template <typename T>
+struct InfoScalar<T,Direct> : DirectAux::DirectInfo<1,T,Direct>
 {
-    typedef typename PrecTraits<P>::type T;
-    Info(const std::vector<T>& x) : DirectAux::DirectInfo<1,P,Direct>(x) {}
-};
+private:
+    typedef DirectAux::DirectInfo<1, T, Direct> base_t;
 
+public:
+    typedef T type;
 
-// ***************************************
-// Direct Expression
-//
-
-template <Precision P>
-struct ExprScalar<P,Direct>
-{
-    typedef typename PrecTraits<P>::type T;
-
-    FORCE_INLINE void init0( DataWorkspace<P>& p, const Info<P,Direct>& info )
+    InfoScalar(const T* x, const size_t n)
+        : base_t(x,n)
+        , xi(x)
+        , buckets(reinterpret_cast<const uint32 *>(&base_t::buckets[0]))
     {
-        ri = p.rptr();
-        zi = p.zptr();
-        xi = p.xptr();
-        buckets = reinterpret_cast<const uint32*>(&info.buckets.front());
-        scaler = info.scaler;
     }
 
-    FORCE_INLINE void scalar( uint32 j ) const
+    FORCE_INLINE uint32 scalar(T z) const
     {
-        T z = zi[j];
-        T tmp = (z - xi[0]) * scaler;
-        uint32 bidx = ftoi(FVec1<SSE,T>(tmp));
+        T tmp = (z - xi[0]) * base_t::scaler;
+        uint32 bidx = ftoi(FVec1<SSE, T>(tmp));
         uint32 iidx = buckets[bidx];
         uint32 iidxm = iidx - 1;
-        ri[j] = (xi[iidx] <= z)? iidx : iidxm;
+        return (xi[iidx] <= z) ? iidx : iidxm;
     }
-
 protected:
-    T scaler;
-    uint32 * ri;
-    const T* zi;
     const T* xi;
-    const uint32* buckets;
+    const uint32 *buckets;
 };
 
-template <Precision P, InstrSet I>
-struct ExprVector<P, Direct,I> : ExprScalar<P,Direct>
+
+template <InstrSet I, typename T>
+struct Info<I, T, Direct> : InfoScalar<T, Direct>
 {
-    typedef ExprScalar<P,Direct> base_t;
-    typedef typename PrecTraits<P>::type T;
-    typedef FVec<I,T> fVec;
-    typedef IVec<SSE,T> i128;
+private:
+    typedef InfoScalar<T, Direct> base_t;
 
-    static const uint32 VecSize = sizeof(fVec)/sizeof(T);
-
-    FORCE_INLINE void initN(DataWorkspace<P>& p, const Info<P,Direct>& info)
-    {
-        base_t::init0( p, info );
-        vscaler.setN( base_t::scaler );
-        vx0.setN( base_t::xi[0] );
-    }
+    typedef FVec<I, T> fVec;
+    typedef IVec<SSE, T> i128;
 
     FORCE_INLINE
-    //NO_INLINE
-    void resolve( const FVec<SSE,float>& vz, const IVec<SSE,float>& bidx, uint32 j ) const
+        //NO_INLINE
+        void resolve(const FVec<SSE, float>& vz, const IVec<SSE, float>& bidx, uint32 *pr) const
     {
-        union U{
+        union U {
             __m128i vec;
             uint32 ui32[4];
         } u;
 #if 1
-        FVec<SSE,float> vxp
-            ( base_t::xi[(u.ui32[3] = base_t::buckets[bidx.get3()])]
+        FVec<SSE, float> vxp
+        (base_t::xi[(u.ui32[3] = base_t::buckets[bidx.get3()])]
             , base_t::xi[(u.ui32[2] = base_t::buckets[bidx.get2()])]
             , base_t::xi[(u.ui32[1] = base_t::buckets[bidx.get1()])]
             , base_t::xi[(u.ui32[0] = base_t::buckets[bidx.get0()])]
-            );
+        );
 #else
         U b;
         b.vec = bidx;
-        FVec<SSE,float> vxp
-            ( base_t::xi[(u.ui32[3] = base_t::buckets[b.ui32[3]])]
+        FVec<SSE, float> vxp
+        (base_t::xi[(u.ui32[3] = base_t::buckets[b.ui32[3]])]
             , base_t::xi[(u.ui32[2] = base_t::buckets[b.ui32[2]])]
             , base_t::xi[(u.ui32[1] = base_t::buckets[b.ui32[1]])]
             , base_t::xi[(u.ui32[0] = base_t::buckets[b.ui32[0]])]
-            );
+        );
 #endif
-        IVec<SSE,float> i(u.vec);
-        IVec<SSE,float> le = vz < vxp;
+        IVec<SSE, float> i(u.vec);
+        IVec<SSE, float> le = vz < vxp;
         i = i + le;
-        i.store( base_t::ri+j );
+        i.store(pr);
     }
 
     FORCE_INLINE
-    //NO_INLINE
-    void resolve( const FVec<SSE,double>& vz, const IVec<SSE,float>& bidx, uint32 j ) const
+        //NO_INLINE
+        void resolve(const FVec<SSE, double>& vz, const IVec<SSE, float>& bidx, uint32 *pr) const
     {
         uint32 b1 = base_t::buckets[bidx.get1()];
         uint32 b0 = base_t::buckets[bidx.get0()];
-        
-        FVec<SSE,double> vxp( base_t::xi[b1], base_t::xi[b0] );
-        IVec<SSE,double> i( b1, b0 );
-        IVec<SSE,double> le = (vz < vxp);
+
+        FVec<SSE, double> vxp(base_t::xi[b1], base_t::xi[b0]);
+        IVec<SSE, double> i(b1, b0);
+        IVec<SSE, double> le = (vz < vxp);
         i = i + le;
 
         union {
@@ -109,15 +89,15 @@ struct ExprVector<P, Direct,I> : ExprScalar<P,Direct>
             uint32 ui32[4];
         } u;
         u.vec = i;
-        base_t::ri[j] = u.ui32[0];
-        base_t::ri[j+1] = u.ui32[2];
+        pr[0] = u.ui32[0];
+        pr[1] = u.ui32[2];
     }
 
 #ifdef USE_AVX
 
     FORCE_INLINE
-    //NO_INLINE
-    void resolve( const FVec<AVX,float>& vz, const IVec<AVX,float>& bidx, uint32 j ) const
+        //NO_INLINE
+        void resolve(const FVec<AVX, float>& vz, const IVec<AVX, float>& bidx, uint32 *pr) const
     {
 #if 1
         union U {
@@ -142,33 +122,33 @@ struct ExprVector<P, Direct,I> : ExprScalar<P,Direct>
         IVec<AVX, float> vlep = vz < vxp;
         ip = ip + vlep;
 
-        ip.store(base_t::ri + j);
+        ip.store(pr);
 #elif 0
-        IVec<AVX,float> i;
+        IVec<AVX, float> i;
         i.setidx(base_t::buckets, bidx);
 
-        FVec<AVX,float> vxp;
+        FVec<AVX, float> vxp;
         vxp.setidx(base_t::xi, i);
 
-        IVec<AVX,float> le = vz < vxp;
+        IVec<AVX, float> le = vz < vxp;
         i = i + le;
 
-        i.store(base_t::ri + j);
+        i.store(pr);
 #else
-        resolve(vz.lo128(), bidx.lo128(), j);
-        resolve(vz.hi128(), bidx.hi128(), j+4);
+        resolve(vz.lo128(), bidx.lo128(), pr);
+        resolve(vz.hi128(), bidx.hi128(), pr + 4);
 #endif
     }
 
 
 
     FORCE_INLINE
-    //NO_INLINE
-    void resolve( const FVec<AVX,double>& vz, const IVec<SSE,float>& bidx, uint32 j ) const
+        //NO_INLINE
+        void resolve(const FVec<AVX, double>& vz, const IVec<SSE, float>& bidx, uint32 *pr) const
     {
-        FVec<AVX,double> vxp;
+        FVec<AVX, double> vxp;
 #if 0
-        IVec<SSE,float> i(_mm_i32gather_epi32(reinterpret_cast<const int32 *>(base_t::buckets), bidx, 4));
+        IVec<SSE, float> i(_mm_i32gather_epi32(reinterpret_cast<const int32 *>(base_t::buckets), bidx, 4));
         vxp.setidx(base_t::xi, i);
 #else
         union {
@@ -176,26 +156,38 @@ struct ExprVector<P, Direct,I> : ExprScalar<P,Direct>
             uint32 ui32[4];
         } u;
         vxp = _mm256_set_pd
-            ( base_t::xi[(u.ui32[3] = base_t::buckets[bidx.get3()])]
+        (base_t::xi[(u.ui32[3] = base_t::buckets[bidx.get3()])]
             , base_t::xi[(u.ui32[2] = base_t::buckets[bidx.get2()])]
             , base_t::xi[(u.ui32[1] = base_t::buckets[bidx.get1()])]
             , base_t::xi[(u.ui32[0] = base_t::buckets[bidx.get0()])]
-            );
-        IVec<SSE,float> i(u.vec);
+        );
+        IVec<SSE, float> i(u.vec);
 #endif
 
-        IVec<SSE,float> le = (vz < vxp).extractLo32s();
+        IVec<SSE, float> le = (vz < vxp).extractLo32s();
         i = i + le;
 
-        i.store(base_t::ri + j);
+        i.store(pr);
     }
 #endif
 
-    FORCE_INLINE void vectorial( uint32 j ) const
+
+public:
+    Info(const T* x, const size_t n)
+        : base_t(x, n)
     {
-        fVec vz( base_t::zi+j );
-        fVec tmp( (vz - vx0) * vscaler );
-        resolve( vz, ftoi(tmp), j );
+        vscaler.setN(base_t::scaler);
+        vx0.setN(base_t::xi[0]);
+    }
+
+    static const uint32 VecSize = sizeof(fVec) / sizeof(T);
+
+    FORCE_INLINE
+    void vectorial(uint32 *pr, const T *pz) const
+    {
+        fVec vz(pz);
+        fVec tmp((vz - vx0) * vscaler);
+        resolve(vz, ftoi(tmp), pr);
     }
 
 private:

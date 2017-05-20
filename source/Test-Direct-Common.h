@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 namespace DirectAux {
 
 #define SAFETY_MULTI_PASS true
@@ -9,7 +11,7 @@ inline void checkH(T H, T Dn)
 {
     T ifmax = Dn * H;
     if (ifmax >= numeric_limits<uint32>::max()) {
-        cout << "Problem unfeasible: index size exceedes uint32 capacity:"
+        cout << "Problem unfeasible: index size exceeds uint32 capacity:"
             << " D[N] =" << Dn
             << ", H =" << H
             << ", H D[n] =" << ifmax << "\n";
@@ -162,21 +164,19 @@ private:
 };
 
 
-template <int Offset, Precision P, Algos A>
+template <int Offset, typename T, Algos A>
 struct DirectInfo
 {
-    typedef typename PrecTraits<P>::type T;
-
-    DirectInfo(const std::vector<T>& x)
+    DirectInfo(const T* x, const size_t n)
+        : xi(NULL)
     {
-        uint32 nx = static_cast<uint32>(x.size());
+        uint32 nx = static_cast<uint32>(n);
         const T *px = &x[0];
 
         if (Offset>1) {
-            m_x.clear();
-            m_x.reserve(nx+Offset-1);
-            m_x.resize(Offset-1, x[0]);
-            m_x.insert(m_x.end(), x.begin(), x.end());
+            xi = new T[nx+Offset-1];
+            std::fill_n(xi, Offset-1, x[0]);
+            std:copy(x, x+n, xi+(Offset-1));
         }
 
         HResults<T> res = computeH<Offset>(px, nx);
@@ -207,10 +207,13 @@ struct DirectInfo
 
     }
 
-    const T *xptr() const { return Offset>1? (&m_x[0])+Offset-1: 0; }
+    ~DirectInfo()
+    {
+        delete [] xi;
+    }
 
     AlignedVec<BucketElem<A,T>>  buckets;
-    std::vector<T> m_x;
+    T *xi;
     T scaler;
     double hRatio;
     size_t nInc;

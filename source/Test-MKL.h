@@ -36,23 +36,14 @@ template <> struct MKLTraits < float >
     }
 };
 
-template <Precision P>
-struct Info<P,MKL>
+template <typename T>
+struct InfoScalar<T,MKL>
 {
-    typedef typename PrecTraits<P>::type T;
-public:
-    DFTaskPtr m_task;
-    T m_datahint[5];         // additional info about the structure
+    typedef T type;
 
-    ~Info()
+    InfoScalar(const T* x, const size_t n)
     {
-        if (m_task)
-            dfDeleteTask(&m_task);
-    }
-
-    Info(const std::vector<T>& x)
-    {
-        MKL_INT n = static_cast<MKL_INT>( x.size() );
+        MKL_INT nx = static_cast<MKL_INT>(n);
         static char sizeguard[sizeof(MKL_INT)==sizeof(uint32)?1:-1];
         if (sizeof(MKL_INT) != sizeof(uint32))
             throw;
@@ -61,80 +52,62 @@ public:
         m_datahint[1] = (T)DF_APRIORI_MOST_LIKELY_CELL;
         m_datahint[2] = 0;
         m_datahint[3] = 1;
-        m_datahint[4] = (T)((x.size() / 2) + 1);
+        m_datahint[4] = (T)((n / 2) + 1);
 
-        int status = MKLTraits<T>::dfNewTask1D(m_task, n, const_cast<T*>(&x[0]) );
+        int status = MKLTraits<T>::dfNewTask1D(m_task, nx, const_cast<T*>(x) );
         if (status != DF_STATUS_OK)
             throw;
     }
 
-};
-
-// ***************************************
-// MKL Expression
-//
-
-template <Precision P>
-struct ExprScalar<P,MKL>
-{
-    typedef typename PrecTraits<P>::type T;
-
     FORCE_INLINE
-    void init0(DataWorkspace<P>& p, const Info<P,MKL>& info)
+    uint32 scalar(T z) const
     {
-        ri = p.rptr();
-        zi = p.zptr();
-        xi = p.xptr();
-        m_task = info.m_task;
-        m_datahint = info.m_datahint;
+        MKL_INT res;
+        MKLTraits<T>::search(m_task, 1, &z, &res, m_datahint);
+        return (res-1);
     }
 
-    FORCE_INLINE
-    void scalar(uint32 j) const
+    ~InfoScalar()
     {
-        MKLTraits<T>::search(m_task, 1, zi + j, reinterpret_cast<MKL_INT*>(ri + j), m_datahint);
-        ri[j] -= 1;
+        if (m_task)
+            dfDeleteTask(&m_task);
     }
 
 protected:
-    uint32 * ri;
-    const T* zi;
-    const T* xi;
     DFTaskPtr m_task;
-    const T *m_datahint;
+    T m_datahint[5];         // additional info about the structure
 };
 
-template <Precision P, InstrSet I>
-struct ExprVector<P,MKL,I> : ExprScalar<P,MKL>
-{
-    typedef typename PrecTraits<P>::type T;
-    typedef ExprScalar<P,MKL> base_t;
 
+template <InstrSet I, typename T>
+struct Info<I, T, MKL> : InfoScalar<T, MKL>
+{
+    typedef InfoScalar<T, MKL> base_t;
+
+public:
     static const uint32 VecSize = NZ;
 
     FORCE_INLINE
-    void initN(DataWorkspace<P>& p, const Info<P,MKL>& info)
+    void vectorial(uint32 *pr, const T *pz) const
     {
-        base_t::init0(p, info);
-    }
-
-    FORCE_INLINE
-    void vectorial(uint32) const
-    {
-        MKLTraits<T>::search(base_t::m_task, NZ, base_t::zi, reinterpret_cast<MKL_INT*>(base_t::ri), base_t::m_datahint);
+        MKLTraits<T>::search(base_t::m_task, NZ, pz, reinterpret_cast<MKL_INT*>(pr), base_t::m_datahint);
         for (uint32 i = 0; i < NZ; ++i)
-            base_t::ri[i] -= 1;
+            pr[i] -= 1;
     }
 };
 
-
 #else
 
-template <Precision P>
-struct Info<P,MKL>
+template <typename T>
+struct InfoScalar<T, MKL>
 {
-    typedef typename PrecTraits<P>::type T;
-    Info(const std::vector<T>& x) {}
+    InfoScalar(const T* x, const size_t n) {}
+};
+
+template <InstrSet I, typename T>
+struct Info<I, T, MKL>
+{
+    Info(const T* x, const size_t n) {}
 };
 
 

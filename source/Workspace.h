@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdio>
 #include <iostream>
+#include <typeinfo>
 
 #include "Type.h"
 #include "AAlloc.h"
@@ -32,11 +33,9 @@ inline void error(size_t i, size_t j, const T *xi, const T* zj)
 
 
 // Base class for auxiliary data structure used in the tests
-template <Precision P>
+template <typename T>
 struct DataWorkspace
 {
-    typedef typename PrecTraits<P>::type T;
-
     // Allocate memory for vector X of size n and initilize it with increments of random size
     // drawn in the range (intMin, intMax)
     // Allocate memory for vector Z and initialize it with the union of the extrema of the intervals in vector X, all mid points
@@ -80,6 +79,14 @@ struct DataWorkspace
         std::random_shuffle(m_z.begin(), m_z.end());
     }
 
+    void reset()
+    {
+        size_t nz = m_z.size();
+        uint32 nx = static_cast<uint32>(m_x.size());
+        for (uint32 j = 0; j < nz; ++j)
+            m_r[j] = nx;  // nx is an invalid index
+    }
+
     // check if the indices r, representing the interval in x are containing the numbers in z
     // then reset the indices to invalid values
     void checkAndReset(Algos A, InstrSet I)
@@ -93,14 +100,14 @@ struct DataWorkspace
             T z = m_z[j];
             if ( !(i < m_x.size()) || !ok(i, &m_x[0], z) ) {
                 if (first) {
-                    cout << "Errors in precision " << P << " algo " << A << " instr set " << I << endl;
+                    cout << "Errors in precision " << typeid(T).name() << " algo " << A << " instr set " << I << endl;
                     first = false;
                 }
                 if (++nerr < 5)
                     error(i, j, &m_x[0], &m_z[0]);
             }
-            m_r[j] = nx;  // nx is an invalid index
         }
+        reset();
     }
 
     const T *xptr() const { return &m_x.front(); }

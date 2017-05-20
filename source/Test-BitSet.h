@@ -1,108 +1,86 @@
+#pragma once
 
+#include "SIMD.h"
 
-// Auxiliary information specifically used in the optimized binary search
-template <Precision P>
-struct Info<P,BitSet>
+// Auxiliary information specifically used in the BitSet binary search
+
+template <typename T>
+struct InfoScalar<T, BitSet>
 {
-    typedef typename PrecTraits<P>::type T;
-    Info(const std::vector<T>& x)
+    typedef T type;
+
+    InfoScalar(const T* x, const size_t n)
+        : xi(NULL)
     {
         // count bits required to describe the index
-        size_t sx = x.size();
         unsigned nbits = 0;
-        while( (sx-1) >> nbits )
+        while ((n - 1) >> nbits)
             ++nbits;
 
-        maxBitIndex = 1 << (nbits-1);
+        maxBitIndex = 1 << (nbits - 1);
 
         // create copy of x extended to the right side to size
         // (1<<nbits) and padded with x[N-1]
         const unsigned nx = 1 << nbits;
-        m_x.reserve( nx );
-        m_x.assign( x.begin(), x.end() );
-        m_x.resize(nx, x.back());
-    }
-
-    FORCE_INLINE const T *xptr() const { return &m_x.front(); }
-
-    uint32 maxBitIndex;
-    std::vector<T> m_x;  // duplicate vector x, adding padding to the right
-};
-
-
-// ***************************************
-// BitSet Expression
-//
-
-template <Precision P>
-struct ExprScalar<P,BitSet>
-{
-    typedef typename PrecTraits<P>::type T;
-
-    FORCE_INLINE void init0( DataWorkspace<P>& p, const Info<P,BitSet>& info )
-    {
-        ri = p.rptr();
-        zi = p.zptr();
-        xi = info.xptr();
-        maxBitIndex = info.maxBitIndex;
-        xb = xi[maxBitIndex];
+        xi = new T[nx];
+        std::copy(x, x + n, xi);
+        std::fill(xi+n, xi + nx, x[n - 1]);
     }
 
     //NO_INLINE
     FORCE_INLINE
-    void scalar( uint32 j ) const
+    uint32 scalar(T z) const
     {
         uint32  i = 0;
         uint32  b = maxBitIndex;
 
-        T z = zi[j];
-
         // the first iteration, when i=0, is simpler
-        if (xb <= z)
+        if (xi[b] <= z)
             i = b;
 
         while ((b >>= 1)) {
             uint32 r = i | b;
-            if (xi[r] <= z )
+            if (xi[r] <= z)
                 i = r;
         };
 
-        ri[j] = i;
+        return i;
+    }
+
+    ~InfoScalar()
+    {
+        delete [] xi;
     }
 
 protected:
-    T xb;
-    uint32 * ri;
-    const T* zi;
-    const T* xi;
+    T *xi;  // duplicate vector x, adding padding to the right
     uint32 maxBitIndex;
 };
 
-
-template <Precision P, InstrSet I>
-struct ExprVector<P, BitSet,I> : ExprScalar<P, BitSet>
+template <InstrSet I, typename T>
+struct Info<I, T, BitSet> : InfoScalar<T, BitSet>
 {
-    typedef ExprScalar<P, BitSet> base_t;
-    typedef typename PrecTraits<P>::type T;
-    typedef FVec<I,T> fVec;
-    typedef IVec<I,T> iVec;
+    typedef InfoScalar<T, BitSet> base_t;
+
+    typedef FVec<I, T> fVec;
+    typedef IVec<I, T> iVec;
+
 public:
+    static const uint32 VecSize = sizeof(fVec) / sizeof(T);
 
-    static const uint32 VecSize = sizeof(fVec)/sizeof(T);
-
-    FORCE_INLINE void initN( DataWorkspace<P>& p, const Info<P,BitSet>& info )
+    Info(const T* x, const size_t n)
+        : base_t(x, n)
     {
-        base_t::init0( p, info );
-        xbv.setN(base_t::xb);
+        xbv.setN(base_t::xi[base_t::maxBitIndex]);
         bv.setN(base_t::maxBitIndex);
     }
 
     //NO_INLINE
     FORCE_INLINE
-    void vectorial( uint32 j ) const
+    void vectorial(uint32 *pr, const T *pz) const
     {
         uint32  b = base_t::maxBitIndex;
-        fVec zv( base_t::zi+j );
+        fVec zv(pz);
 
         iVec lbv = bv;
 
@@ -113,13 +91,13 @@ public:
             lbv = lbv >> 1;
             fVec xv;
             iVec rv = iv | lbv;
-            xv.setidx( base_t::xi, rv );
+            xv.setidx(base_t::xi, rv);
             lev = xv <= zv;
             //iv = iv | ( lev & lbv );
             iv.assignIf(rv, lev);
         };
 
-        iv.store( base_t::ri+j );
+        iv.store(pr);
     }
 
 
@@ -127,3 +105,4 @@ private:
     fVec xbv;
     iVec bv;
 };
+

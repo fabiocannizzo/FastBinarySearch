@@ -1,90 +1,65 @@
+#pragma once
+
+#include "SIMD.h"
 
 // Auxiliary information specifically used in the ClassicOffset binary search
-template <Precision P>
-struct Info<P,ClassicOffset>
+template <typename T>
+struct InfoScalar<T, ClassicOffset>
 {
-    typedef typename PrecTraits<P>::type T;
-    Info(const std::vector<T>& x)
-        : nIter(static_cast<uint32>(log2(x.size())))
-        , size1(static_cast<uint32>(x.size()))
-        , mid0(size1/2)
+    typedef T type;
+
+    InfoScalar(const T* x, const size_t n)
+        : xi(x)
+        , mid0(static_cast<uint32>(n/2))
+        , size1(static_cast<uint32>(n - mid0))
+        , nIter(static_cast<uint32>(log2(n)))
     {
-        size1 -= mid0;
-    }
-
-    uint32 size1;
-    uint32 mid0;
-    uint32 nIter;
-};
-
-
-// ***************************************
-// ClassicOffset Epxression
-//
-
-template <Precision P>
-struct ExprScalar<P,ClassicOffset>
-{
-    typedef typename PrecTraits<P>::type T;
-
-    FORCE_INLINE
-    void init0( DataWorkspace<P>& p, const Info<P,ClassicOffset>& info )
-    {
-        ri = p.rptr();
-        zi = p.zptr();
-        xi = p.xptr();
-        nIter = info.nIter;
-        size1 = info.size1;
-        mid0 = info.size1;
     }
 
     FORCE_INLINE
-    void scalar( uint32 j ) const
+    uint32 scalar(T z) const
     {
-        T z = zi[j];
-
         // variation on original paper: the number of iterations is fixed
 
         // there is at least one iteration
         uint32 mid = mid0;  // initialised to: size/2
-        uint32 i = (z >= xi[mid0])? mid: 0;
+        uint32 i = (z >= xi[mid0]) ? mid : 0;
         uint32 sz = size1;  // initialised to: size - mid
         uint32 n = nIter;   // this is decreaded by 1
-        while(n--) {
+        while (n--) {
             uint32 h = sz / 2;
-            uint32 mid = i+h;
+            uint32 mid = i + h;
             if (z >= xi[mid])
                 i = mid;
             sz -= h;
         }
 
-        ri[j] = i;
+        return i;
     }
 
 protected:
-    uint32 * ri;
-    const T* zi;
-    const T* xi;
-    uint32 nIter;
-    uint32 size1;
+    const T *xi;
     uint32 mid0;
+    uint32 size1;
+    uint32 nIter;
 };
 
 
-template <Precision P, InstrSet I>
-struct ExprVector<P, ClassicOffset,I> : ExprScalar<P, ClassicOffset>
+
+template <InstrSet I, typename T>
+struct Info<I, T, ClassicOffset> : public InfoScalar<T, ClassicOffset>
 {
-    typedef ExprScalar<P, ClassicOffset> base_t;
-    typedef typename PrecTraits<P>::type T;
+    typedef InfoScalar<T, ClassicOffset> base_t;
+
     typedef FVec<I,T> fVec;
     typedef IVec<I,T> iVec;
-public:
 
+public:
     static const uint32 VecSize = sizeof(fVec)/sizeof(T);
 
-    FORCE_INLINE void initN( DataWorkspace<P>& p, const Info<P,ClassicOffset>& info )
+    Info(const T* x, const size_t n)
+        : base_t(x, n)
     {
-        base_t::init0( p, info );
         xMidV.setN(base_t::xi[base_t::mid0]);
         size1V.setN(base_t::size1);
         mid0V.setN(base_t::mid0);
@@ -92,9 +67,9 @@ public:
 
     //NO_INLINE
     FORCE_INLINE
-    void vectorial( uint32 j ) const
+    void vectorial(uint32 *pr, const T *pz) const
     {
-        fVec zV( base_t::zi+j );
+        fVec zV(pz);
 
         // there is at least one iteration
         iVec midV = mid0V;  // initialised to: size/2
@@ -113,9 +88,8 @@ public:
             szV = szV - hV;
         }
 
-        iV.store( base_t::ri+j );
+        iV.store(pr);
     }
-
 
 private:
     fVec xMidV;

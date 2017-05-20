@@ -1,100 +1,79 @@
+#pragma once
 
-// Auxiliary information specifically used in the modified version of the BitSet method (the one using min)
-template <Precision P>
-struct Info<P, BitSetNoPad>
+#include "SIMD.h"
+
+// Auxiliary information specifically used in the modified version of the BitSetNoPad method (the one using min)
+
+template <typename T>
+struct InfoScalar<T, BitSetNoPad>
 {
-    typedef typename PrecTraits<P>::type T;
+    typedef T type;
 
-    Info(const std::vector<T>& x)
-        : lastValidIndex(static_cast<uint32>( x.size()-1 ))
+    InfoScalar(const T* x, const size_t n)
+        : xi(x)
+        , lastIndex(static_cast<uint32>(n - 1))
     {
-        const size_t sx = x.size();
         unsigned nbits = 0;
-        while( (sx-1) >> nbits )
+        while ((n - 1) >> nbits)
             ++nbits;
 
-        maxBitIndex = 1 << (nbits-1);
-    }
-
-    uint32 maxBitIndex;
-    uint32 lastValidIndex;
-};
-
-
-// ***************************************
-// BitSet Expression using min instead of a padded X vector
-//
-template <Precision P>
-struct ExprScalar<P,BitSetNoPad>
-{
-    typedef typename PrecTraits<P>::type T;
-
-    FORCE_INLINE void init0( DataWorkspace<P>& p, const Info<P,BitSetNoPad>& info )
-    {
-        ri = p.rptr();
-        zi = p.zptr();
-        xi = p.xptr();
-        maxBitIndex = info.maxBitIndex;
-        xLast = info.lastValidIndex;
-        xb = xi[maxBitIndex];
+        maxBitIndex = 1 << (nbits - 1);
     }
 
     //NO_INLINE
     FORCE_INLINE
-    void scalar( uint32 j ) const
+    uint32 scalar(T z) const
     {
         uint32  i = 0;
         uint32  b = maxBitIndex;
 
-        T z = zi[j];
-
         // the first iteration, when i=0, is simpler
-        if (xb <= z)
+        if (xi[b] <= z)
             i = b;
 
         while ((b >>= 1)) {
             uint32 r = i | b;
-            uint32 h = r<=xLast? r: xLast;
-            if (xi[h] <= z )
+            uint32 h = r <= lastIndex ? r : lastIndex;
+            if (xi[h] <= z)
                 i = r;
         };
 
-        ri[j] = i;
+        return i;
     }
 
 protected:
-    T xb;
-    uint32 * ri;
-    const T* zi;
-    const T* xi;
+    const T *xi;  // duplicate vector x, adding padding to the right
     uint32 maxBitIndex;
-    uint32 xLast;
+    uint32 lastIndex;
+
 };
 
-template <Precision P, InstrSet I>
-struct ExprVector<P,BitSetNoPad,I> : ExprScalar<P,BitSetNoPad>
+
+template <InstrSet I, typename T>
+struct Info<I, T, BitSetNoPad> : InfoScalar<T, BitSetNoPad>
 {
-    typedef ExprScalar<P,BitSetNoPad> base_t;
-    typedef typename PrecTraits<P>::type T;
-    typedef FVec<I,T> fVec;
-    typedef IVec<I,T> iVec;
+    typedef InfoScalar<T, BitSetNoPad> base_t;
 
-    static const uint32 VecSize = sizeof(fVec)/sizeof(T);
+    typedef FVec<I, T> fVec;
+    typedef IVec<I, T> iVec;
 
-    FORCE_INLINE void initN( DataWorkspace<P>& p, const Info<P,BitSetNoPad>& info )
+public:
+    static const uint32 VecSize = sizeof(fVec) / sizeof(T);
+
+    Info(const T* x, const size_t n)
+        : base_t(x, n)
     {
-        base_t::init0( p, info );
-        xbv.setN(base_t::xb);
+        xbv.setN(base_t::xi[base_t::maxBitIndex]);
         bv.setN(base_t::maxBitIndex);
-        xlv.setN(base_t::xLast);
+        xlv.setN(base_t::lastIndex);
     }
 
     //NO_INLINE
     FORCE_INLINE
-    void vectorial( uint32 j ) const
+        void vectorial(uint32 *pr, const T *pz) const
     {
         uint32  b = base_t::maxBitIndex;
-        fVec zv( base_t::zi+j );
+        fVec zv(pz);
 
         iVec lbv = bv;
 
@@ -106,17 +85,19 @@ struct ExprVector<P,BitSetNoPad,I> : ExprScalar<P,BitSetNoPad>
             fVec xv;
             iVec rv = iv | lbv;
             iVec hv = min(rv, xlv);
-            xv.setidx( base_t::xi, hv );
+            xv.setidx(base_t::xi, hv);
             lev = xv <= zv;
             //iv = iv | ( lev & lbv );
             iv.assignIf(rv, lev);
         };
 
-        iv.store( base_t::ri+j );
+        iv.store(pr);
     }
+
 
 private:
     fVec xbv;
     iVec bv;
     iVec xlv;
 };
+

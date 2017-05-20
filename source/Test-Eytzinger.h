@@ -1,10 +1,11 @@
+#pragma once
 
-// Auxiliary information specifically used in the classic binary search
-template <Precision P>
-struct Info<P,Eytzinger>
+#include "AAlloc.h"
+#include "SIMD.h"
+
+template <typename T>
+struct InfoScalar<T,Eytzinger>
 {
-    typedef typename PrecTraits<P>::type T;
-
 private:
     struct layoutBuilder
     {
@@ -41,13 +42,13 @@ private:
 
 
 public:
-    Info(const std::vector<T>& x)
+    typedef T type;
+
+    InfoScalar(const T* x, const size_t n)
     {
         // count bits required to describe the index
-        size_t sx = x.size();
-
         uint32 maxdepth = 0;
-        while ((1 << maxdepth) - 1 < sx)
+        while ((1 << maxdepth) - 1 < n)
             ++maxdepth;
         m_nLayers = maxdepth;
         m_mask = ~(1 << m_nLayers);
@@ -55,91 +56,64 @@ public:
 #if 0
         // In order to facilitate debugging of creation of Eytzinger layout
         // we set the elements of the vector x from 1 to n
-        for (size_t i = 0; i < sx; ++i)
+        for (size_t i = 0; i < n; ++i)
             const_cast<T&>(x[i]) = static_cast<float>(i+1);
 #endif
 
         size_t nl = (1 << maxdepth) - 1;
         m_x.resize(nl);
-        fill_n(m_x.begin(), nl, x.back());
+        fill_n(m_x.begin(), nl, x[n-1]);
 
-        layoutBuilder(&x.front(), m_x, sx, maxdepth);
-    }
-
-    FORCE_INLINE const T *xptr() const { return &m_x.front(); }
-
-    AlignedVec<T> m_x;  // duplicate vector x, adding padding to the right
-    uint32 m_nLayers;
-    uint32 m_mask;
-};
-
-
-// ***************************************
-// Eytzinger Expression
-//
-
-template <Precision P>
-struct ExprScalar<P,Eytzinger>
-{
-    typedef typename PrecTraits<P>::type T;
-
-    FORCE_INLINE
-    void init0( DataWorkspace<P>& p, const Info<P,Eytzinger>& info )
-    {
-        ri = p.rptr();
-        zi = p.zptr();
-        xi = info.xptr();
-        m_nLayers = info.m_nLayers;
-        m_mask = info.m_mask;
+        layoutBuilder(x, m_x, n, maxdepth);
+        xi = &m_x[0];
     }
 
     FORCE_INLINE
-    void scalar( uint32 j ) const
+    uint32 scalar(T z) const
     {
-        T z = zi[j];
-
         uint32 d = m_nLayers;
 
         // the first iteration, when p=0, is simpler
-        uint32 p = (z < xi[0])? 1: 2;
+        uint32 p = (z < xi[0]) ? 1 : 2;
 
         while (--d > 0)
-            p = (p << 1) + ((z < xi[p])? 1: 2);
+            p = (p << 1) + ((z < xi[p]) ? 1 : 2);
 
-        ri[j] = p & m_mask;  // clear higher bit
+        return (p & m_mask);  // clear higher bit
     }
 
+private:
+    AlignedVec<T> m_x;  // duplicate vector x, adding padding to the right
 protected:
-    uint32 * ri;
-    const T* zi;
-    const T* xi;
+    const T *xi;
     uint32 m_nLayers;
     uint32 m_mask;
 };
 
-template <Precision P, InstrSet I>
-struct ExprVector<P, Eytzinger,I> : ExprScalar<P, Eytzinger>
+
+template <InstrSet I, typename T>
+struct Info<I, T, Eytzinger> : InfoScalar<T, Eytzinger>
 {
-    typedef typename PrecTraits<P>::type T;
-    typedef ExprScalar<P,Eytzinger> base_t;
-    typedef FVec<I,T> fVec;
-    typedef IVec<I,T> iVec;
+    typedef InfoScalar<T, Eytzinger> base_t;
 
-    static const uint32 VecSize = sizeof(fVec)/sizeof(T);
+    typedef FVec<I, T> fVec;
+    typedef IVec<I, T> iVec;
 
-    FORCE_INLINE
-    void initN( DataWorkspace<P>& p, const Info<P, Eytzinger>& info )
+public:
+    static const uint32 VecSize = sizeof(fVec) / sizeof(T);
+    
+    Info(const T* x, const size_t n)
+        : base_t(x, n)
     {
-        base_t::init0( p, info );
         xbv.setN(base_t::xi[0]);
         maskv.setN(base_t::m_mask);
         two.setN(2);
     }
 
     FORCE_INLINE
-    void vectorial( uint32 j ) const
+    void vectorial(uint32 *pr, const T *pz) const
     {
-        fVec zv( base_t::zi+j );
+        fVec zv(pz);
 
         uint32 d = base_t::m_nLayers;
 
@@ -148,16 +122,18 @@ struct ExprVector<P, Eytzinger,I> : ExprScalar<P, Eytzinger>
 
         while (--d > 0) {
             fVec xv;
-            xv.setidx( base_t::xi, pv );
+            xv.setidx(base_t::xi, pv);
             iVec right = (zv < xv) + two;
             pv = (pv << 1) + right;
         };
 
         pv = pv & maskv;
-        pv.store( base_t::ri+j );
+        pv.store(pr);
     }
 
+private:
     fVec xbv;
     iVec two;
     iVec maskv;
 };
+

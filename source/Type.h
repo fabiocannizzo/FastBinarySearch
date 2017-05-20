@@ -25,6 +25,17 @@ template <> struct PrecTraits<Double>
     typedef uint64 itype;
 };
 
+template <typename T> struct IntTraits;
+
+template <> struct IntTraits<float>
+{
+    typedef uint32 itype;
+};
+template <> struct IntTraits<double>
+{
+    typedef uint64 itype;
+};
+
 template <InstrSet I>
 struct InstrIntTraits;
 
@@ -35,18 +46,12 @@ struct InstrFloatTraits;
     Precomputed info
 */
 
-template <Precision P, Algos A>
+template <InstrSet I, typename T, Algos A>
 struct Info;
 
-/*
-    Expressions
-*/
+template <typename T, Algos A>
+struct InfoScalar;
 
-template <Precision P, Algos A>
-struct ExprScalar;
-
-template <Precision P, Algos A, InstrSet I>
-struct ExprVector;
 
 /*
 Stats
