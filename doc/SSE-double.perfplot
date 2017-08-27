@@ -1,0 +1,81 @@
+\addplot[
+	color=\DirectCacheColor,
+	mark=\DirectCacheMark,
+	style=\DirectCacheStyle,
+]
+coordinates {
+(15,590.195)(255,583.288)(4095,523.454)(65535,451.57)(1048575,109.933)
+};
+\addplot[
+	color=\DirectColor,
+	mark=\DirectMark,
+	style=\DirectStyle,
+]
+coordinates {
+(15,637.41)(255,637.296)(4095,528.415)(65535,320.681)(1048575,68.6271)
+};
+\addplot[
+	color=\DirectGapColor,
+	mark=\DirectGapMark,
+	style=\DirectGapStyle,
+]
+coordinates {
+(15,426.751)(255,425.14)(4095,362.655)(65535,225.109)(1048575,81.2694)
+};
+\addplot[
+	color=\NonaryColor,
+	mark=\NonaryMark,
+	style=\NonaryStyle,
+]
+coordinates {
+(1,0.1)
+};
+\addplot[
+	color=\PentaryColor,
+	mark=\PentaryMark,
+	style=\PentaryStyle,
+]
+coordinates {
+(15,254.424)(255,104.568)(4095,54.999)(65535,39.4831)(1048575,18.0423)
+};
+\addplot[
+	color=\TernaryColor,
+	mark=\TernaryMark,
+	style=\TernaryStyle,
+]
+coordinates {
+(15,159.895)(255,65.629)(4095,44.7891)(65535,23.7254)(1048575,12.5755)
+};
+\addplot[
+	color=\EytzingerColor,
+	mark=\EytzingerMark,
+	style=\EytzingerStyle,
+]
+coordinates {
+(15,253.338)(255,88.1337)(4095,45.0877)(65535,26.8801)(1048575,11.3656)
+};
+\addplot[
+	color=\BitSetColor,
+	mark=\BitSetMark,
+	style=\BitSetStyle,
+]
+coordinates {
+(15,261.189)(255,89.3515)(4095,46.1181)(65535,11.1374)(1048575,5.73903)
+};
+\addplot[
+	color=\ClassicOffsetColor,
+	mark=\ClassicOffsetMark,
+	style=\ClassicOffsetStyle,
+]
+coordinates {
+(15,250.586)(255,88.887)(4095,46.4843)(65535,11.0825)(1048575,5.71159)
+};
+\addplot[
+	color=\MKLColor,
+	mark=\MKLMark,
+	style=\MKLStyle,
+]
+coordinates {
+(15,216.796)(255,126.519)(4095,65.1559)(65535,25.5125)(1048575,10.4006)
+};
+\legend{\DirectCacheName,\DirectName,\DirectGapName,\NonaryName,\PentaryName,\TernaryName,\EytzingerName,\BitSetName,\ClassicOffsetName,\MKLName}

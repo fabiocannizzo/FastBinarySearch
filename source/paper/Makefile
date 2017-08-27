@@ -17,7 +17,6 @@ $(info compiler=$(CC))
 
 # directories
 BINDIR=bin
-VPATH=demo:paper
 
 # file extensions
 ifeq ($(PLATFORM), Linux)
@@ -33,10 +32,10 @@ else
   LIB=.lib
 endif
 
-TARGETS=$(patsubst %, $(BINDIR)/%$(EXE), paper demo charts)
+TARGETS=$(patsubst %, $(BINDIR)/%$(EXE), paper charts)
 
 ifeq ($(CC),g++)
-  CFLAGS=-c -std=c++0x -Iinclude
+  CFLAGS=-c -std=c++0x -I../include
   LFLAGS=
 endif
 
@@ -80,31 +79,30 @@ else
    CFLAGS += -O3
 endif
 
-LIBHEADERS=$(wildcard include/*.h)
-PAPERHEADERS=$(wildcard paper/*.h)
+LIBHEADERS=$(wildcard ../include/*.h)
+PAPERHEADERS=$(wildcard ./*.h)
+
+EXTRADEPS=$(LIBHEADERS) $(PAPERHEADERS) Makefile
+
 PAPEROBJS=$(patsubst paper/%.cpp, $(BINDIR)/%$(OBJ), $(wildcard paper/*.cpp))
 
 all : $(TARGETS)
 
-$(BINDIR)/%$(OBJ) : %.cpp $(LIBHEADERS) Makefile | $(BINDIR)
+$(BINDIR)/%$(OBJ) : %.cpp $(EXTRADEPS) | $(BINDIR)
 	$(CC) $(CFLAGS) $< -o $@
-$(PAPEROBJS) : $(PAPERHEADERS)
 
 
 $(BINDIR)/%$(EXE) : $(BINDIR)/%$(OBJ)
 	$(CC) $(LFLAGS) $< -o $@
 
-# BEGIN NAG SECTION
-
-# END NAG SECTION
 
 # BEGIN AUX SECTION
 
-$(BINDIR)/%.i : %.cpp $(LIBHEADERS) Makefile | $(BINDIR)
+$(BINDIR)/%.i : %.cpp $(EXTRADEPS) | $(BINDIR)
 	$(CC) -E -c $(CFLAGS) $< -o $@
 
 
-$(BINDIR)/%.asm : %.cpp $(LIBHEADERS) Makefile | $(BINDIR)
+$(BINDIR)/%.asm : %.cpp $(EXTRADEPS) | $(BINDIR)
 	$(CC) -c -g -Wa,-adhln -masm=intel $(CFLAGS) $< > $@
 
 # END AUX SECTION

@@ -1,0 +1,182 @@
+\begin{table}[ht]
+\centering
+\footnotesize
+
+\begin{tabular}{l | c c c | c c c |}
+\cline{2-7}
+              & \multicolumn{3}{c|}{\textbf{Single}} & \multicolumn{3}{c|}{\textbf{Double}} \\
+\cline{2-7}
+              & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} \\
+              & $\mathbf{d=1}$ & $\mathbf{d=4}$ & $\mathbf{d=8}$ & $\mathbf{d=1}$ & $\mathbf{d=2}$ & $\mathbf{d=4}$ \\
+\hline
+\multicolumn{1}{|c|}{\textbf{\DirectCacheFMAName}                   } &     448.79 &     847.67 &     814.03 &     414.77 &     652.56 &     668.08 \\
+\multicolumn{1}{|c|}{\textbf{\DirectFMAName}                        } &     440.35 &     823.18 &     732.21 &     421.87 &     695.21 &     674.14 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapFMAName}                       } &     267.34 &     708.09 &     685.85 &     257.32 &     453.12 &     583.28 \\
+\multicolumn{1}{|c|}{\textbf{\DirectCacheName}                      } &     412.61 &     790.21 &     780.62 &     406.19 &     590.19 &     625.65 \\
+\multicolumn{1}{|c|}{\textbf{\DirectName}                           } &     410.28 &     742.86 &     705.74 &     422.84 &     637.41 &     629.33 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapName}                          } &     246.33 &     646.10 &     661.70 &     246.63 &     426.75 &     549.45 \\
+\multicolumn{1}{|c|}{\textbf{\NonaryName}                           } &     247.05 &        --- &        --- &        --- &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\PentaryName}                          } &     262.06 &        --- &        --- &     254.42 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\TernaryName}                          } &        --- &        --- &        --- &     159.89 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\EytzingerName}                        } &     174.00 &     366.10 &     401.22 &     174.76 &     253.34 &     284.29 \\
+\multicolumn{1}{|c|}{\textbf{\BitSetName}                           } &     202.63 &     374.59 &     399.67 &     208.22 &     261.19 &     219.84 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicOffsetName}                    } &     183.88 &     369.72 &     399.58 &     186.30 &     250.59 &     220.26 \\
+\multicolumn{1}{|c|}{\textbf{\MorinOffsetName}                      } &     145.07 &        --- &        --- &     146.76 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\BitSetNoPadName}                      } &     160.19 &     364.79 &     392.95 &     164.73 &     244.75 &     215.91 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicModName}                       } &     135.92 &     215.61 &     248.52 &     135.98 &     134.80 &     136.88 \\
+\multicolumn{1}{|c|}{\textbf{\MorinBranchyName}                     } &      59.42 &        --- &        --- &      60.05 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\ClassicName}                          } &      49.99 &        --- &        --- &      50.72 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\LowerBoundName}                       } &      59.31 &        --- &        --- &      59.81 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\MKLName}                              } &      33.51 &     195.60 &     195.46 &      32.17 &     216.80 &     216.54 \\
+\hline
+\end{tabular}
+\caption{Throughput in millions of searches per second with vector $X$ of size 15}
+\label{tab:results0}
+\end{table}
+
+
+\begin{table}[ht]
+\centering
+\footnotesize
+
+\begin{tabular}{l | c c c | c c c |}
+\cline{2-7}
+              & \multicolumn{3}{c|}{\textbf{Single}} & \multicolumn{3}{c|}{\textbf{Double}} \\
+\cline{2-7}
+              & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} \\
+              & $\mathbf{d=1}$ & $\mathbf{d=4}$ & $\mathbf{d=8}$ & $\mathbf{d=1}$ & $\mathbf{d=2}$ & $\mathbf{d=4}$ \\
+\hline
+\multicolumn{1}{|c|}{\textbf{\DirectCacheFMAName}                   } &     443.32 &     855.97 &     847.05 &     418.69 &     650.46 &     669.65 \\
+\multicolumn{1}{|c|}{\textbf{\DirectFMAName}                        } &     437.25 &     825.10 &     746.88 &     421.13 &     684.48 &     683.87 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapFMAName}                       } &     271.68 &     729.22 &     731.69 &     255.48 &     456.37 &     586.83 \\
+\multicolumn{1}{|c|}{\textbf{\DirectCacheName}                      } &     422.44 &     811.07 &     790.63 &     409.17 &     583.29 &     633.31 \\
+\multicolumn{1}{|c|}{\textbf{\DirectName}                           } &     416.98 &     771.24 &     718.28 &     420.32 &     637.30 &     621.33 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapName}                          } &     252.03 &     657.39 &     678.46 &     247.11 &     425.14 &     549.04 \\
+\multicolumn{1}{|c|}{\textbf{\NonaryName}                           } &     154.32 &        --- &        --- &        --- &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\PentaryName}                          } &     109.78 &        --- &        --- &     104.57 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\TernaryName}                          } &        --- &        --- &        --- &      65.63 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\EytzingerName}                        } &      67.86 &     121.27 &     149.79 &      67.54 &      88.13 &      95.89 \\
+\multicolumn{1}{|c|}{\textbf{\BitSetName}                           } &      82.52 &     120.27 &     151.18 &      81.38 &      89.35 &      83.09 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicOffsetName}                    } &      73.46 &     120.52 &     150.94 &      73.45 &      88.89 &      82.92 \\
+\multicolumn{1}{|c|}{\textbf{\MorinOffsetName}                      } &      61.12 &        --- &        --- &      61.25 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\BitSetNoPadName}                      } &      68.62 &     120.40 &     149.82 &      68.95 &      86.26 &      82.16 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicModName}                       } &      53.32 &      86.57 &     115.73 &      53.37 &      57.57 &      63.44 \\
+\multicolumn{1}{|c|}{\textbf{\MorinBranchyName}                     } &      22.07 &        --- &        --- &      21.99 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\ClassicName}                          } &      20.98 &        --- &        --- &      21.15 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\LowerBoundName}                       } &      20.77 &        --- &        --- &      20.82 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\MKLName}                              } &      25.15 &     135.67 &     136.72 &      22.98 &     126.52 &     125.51 \\
+\hline
+\end{tabular}
+\caption{Throughput in millions of searches per second with vector $X$ of size 255}
+\label{tab:results1}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\footnotesize
+
+\begin{tabular}{l | c c c | c c c |}
+\cline{2-7}
+              & \multicolumn{3}{c|}{\textbf{Single}} & \multicolumn{3}{c|}{\textbf{Double}} \\
+\cline{2-7}
+              & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} \\
+              & $\mathbf{d=1}$ & $\mathbf{d=4}$ & $\mathbf{d=8}$ & $\mathbf{d=1}$ & $\mathbf{d=2}$ & $\mathbf{d=4}$ \\
+\hline
+\multicolumn{1}{|c|}{\textbf{\DirectCacheFMAName}                   } &     380.30 &     782.41 &     637.10 &     389.57 &     561.19 &     591.66 \\
+\multicolumn{1}{|c|}{\textbf{\DirectFMAName}                        } &     392.71 &     683.51 &     597.80 &     363.94 &     556.46 &     542.64 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapFMAName}                       } &     230.93 &     628.40 &     625.06 &     216.89 &     385.00 &     501.90 \\
+\multicolumn{1}{|c|}{\textbf{\DirectCacheName}                      } &     359.03 &     738.26 &     636.12 &     369.11 &     523.45 &     556.97 \\
+\multicolumn{1}{|c|}{\textbf{\DirectName}                           } &     372.00 &     624.38 &     573.23 &     382.13 &     528.41 &     532.56 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapName}                          } &     223.63 &     583.07 &     596.67 &     208.23 &     362.66 &     481.57 \\
+\multicolumn{1}{|c|}{\textbf{\NonaryName}                           } &      98.61 &        --- &        --- &        --- &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\PentaryName}                          } &      56.91 &        --- &        --- &      55.00 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\TernaryName}                          } &        --- &        --- &        --- &      44.79 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\EytzingerName}                        } &      36.90 &      66.26 &      87.03 &      37.57 &      45.09 &      53.85 \\
+\multicolumn{1}{|c|}{\textbf{\BitSetName}                           } &      44.02 &      66.42 &      88.66 &      43.56 &      46.12 &      48.31 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicOffsetName}                    } &      41.62 &      66.47 &      88.17 &      40.79 &      46.48 &      48.73 \\
+\multicolumn{1}{|c|}{\textbf{\MorinOffsetName}                      } &      35.38 &        --- &        --- &      34.75 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\BitSetNoPadName}                      } &      39.00 &      66.52 &      88.10 &      39.33 &      44.39 &      48.07 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicModName}                       } &      30.52 &      51.26 &      71.73 &      30.64 &      32.24 &      39.02 \\
+\multicolumn{1}{|c|}{\textbf{\MorinBranchyName}                     } &      13.59 &        --- &        --- &      13.86 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\ClassicName}                          } &      13.20 &        --- &        --- &      13.54 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\LowerBoundName}                       } &      12.88 &        --- &        --- &      13.09 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\MKLName}                              } &      20.71 &      63.93 &      63.88 &      18.68 &      65.16 &      65.02 \\
+\hline
+\end{tabular}
+\caption{Throughput in millions of searches per second with vector $X$ of size 4095}
+\label{tab:results2}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\footnotesize
+
+\begin{tabular}{l | c c c | c c c |}
+\cline{2-7}
+              & \multicolumn{3}{c|}{\textbf{Single}} & \multicolumn{3}{c|}{\textbf{Double}} \\
+\cline{2-7}
+              & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} \\
+              & $\mathbf{d=1}$ & $\mathbf{d=4}$ & $\mathbf{d=8}$ & $\mathbf{d=1}$ & $\mathbf{d=2}$ & $\mathbf{d=4}$ \\
+\hline
+\multicolumn{1}{|c|}{\textbf{\DirectCacheFMAName}                   } &     329.84 &     648.44 &     575.11 &     307.91 &     501.34 &     534.68 \\
+\multicolumn{1}{|c|}{\textbf{\DirectFMAName}                        } &     214.62 &     416.77 &     417.74 &     193.22 &     328.62 &     340.12 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapFMAName}                       } &     153.51 &     395.74 &     422.29 &     133.26 &     239.98 &     310.66 \\
+\multicolumn{1}{|c|}{\textbf{\DirectCacheName}                      } &     318.65 &     631.74 &     555.77 &     315.58 &     451.57 &     491.66 \\
+\multicolumn{1}{|c|}{\textbf{\DirectName}                           } &     226.59 &     398.87 &     408.27 &     205.92 &     320.68 &     326.78 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapName}                          } &     147.70 &     377.56 &     407.99 &     131.61 &     225.11 &     308.79 \\
+\multicolumn{1}{|c|}{\textbf{\NonaryName}                           } &      53.79 &        --- &        --- &        --- &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\PentaryName}                          } &      44.95 &        --- &        --- &      39.48 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\TernaryName}                          } &        --- &        --- &        --- &      23.73 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\EytzingerName}                        } &      22.97 &      44.45 &      53.46 &      18.33 &      26.88 &      30.00 \\
+\multicolumn{1}{|c|}{\textbf{\BitSetName}                           } &      22.34 &      31.06 &      42.54 &      12.18 &      11.14 &      15.04 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicOffsetName}                    } &      20.46 &      31.09 &      42.44 &      11.55 &      11.08 &      14.97 \\
+\multicolumn{1}{|c|}{\textbf{\MorinOffsetName}                      } &      18.01 &        --- &        --- &      10.13 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\BitSetNoPadName}                      } &      19.68 &      31.03 &      42.33 &      11.15 &      10.98 &      14.98 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicModName}                       } &      14.54 &      26.26 &      37.57 &       8.50 &       9.23 &      13.23 \\
+\multicolumn{1}{|c|}{\textbf{\MorinBranchyName}                     } &       9.37 &        --- &        --- &       6.86 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\ClassicName}                          } &       9.04 &        --- &        --- &       6.70 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\LowerBoundName}                       } &       8.85 &        --- &        --- &       6.58 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\MKLName}                              } &      16.41 &      31.69 &      31.64 &      13.12 &      25.51 &      25.52 \\
+\hline
+\end{tabular}
+\caption{Throughput in millions of searches per second with vector $X$ of size 65535}
+\label{tab:results3}
+\end{table}
+
+
+\begin{table}[ht]
+\centering
+\footnotesize
+
+\begin{tabular}{l | c c c | c c c |}
+\cline{2-7}
+              & \multicolumn{3}{c|}{\textbf{Single}} & \multicolumn{3}{c|}{\textbf{Double}} \\
+\cline{2-7}
+              & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} & \textbf{Scalar} & \textbf{SSE-4} & \textbf{AVX-2} \\
+              & $\mathbf{d=1}$ & $\mathbf{d=4}$ & $\mathbf{d=8}$ & $\mathbf{d=1}$ & $\mathbf{d=2}$ & $\mathbf{d=4}$ \\
+\hline
+\multicolumn{1}{|c|}{\textbf{\DirectCacheFMAName}                   } &     139.13 &     135.05 &     135.20 &     109.20 &     112.05 &     110.22 \\
+\multicolumn{1}{|c|}{\textbf{\DirectFMAName}                        } &      84.87 &      82.34 &      82.00 &      71.44 &      68.96 &      69.30 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapFMAName}                       } &      88.05 &     100.18 &      99.50 &      75.49 &      81.65 &      80.34 \\
+\multicolumn{1}{|c|}{\textbf{\DirectCacheName}                      } &     140.52 &     133.05 &     134.88 &     111.20 &     109.93 &     111.80 \\
+\multicolumn{1}{|c|}{\textbf{\DirectName}                           } &      84.17 &      82.48 &      82.16 &      70.00 &      68.63 &      69.06 \\
+\multicolumn{1}{|c|}{\textbf{\DirectGapName}                          } &      87.66 &     100.00 &      99.47 &      75.70 &      81.27 &      80.21 \\
+\multicolumn{1}{|c|}{\textbf{\NonaryName}                           } &      32.99 &        --- &        --- &        --- &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\PentaryName}                          } &      21.31 &        --- &        --- &      18.04 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\TernaryName}                          } &        --- &        --- &        --- &      12.58 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\EytzingerName}                        } &      10.10 &      18.78 &      24.79 &       8.74 &      11.37 &      13.38 \\
+\multicolumn{1}{|c|}{\textbf{\BitSetName}                           } &       5.88 &      11.04 &      17.75 &       5.23 &       5.74 &       8.43 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicOffsetName}                    } &       5.87 &      11.04 &      17.76 &       5.25 &       5.71 &       8.41 \\
+\multicolumn{1}{|c|}{\textbf{\MorinOffsetName}                      } &       4.76 &        --- &        --- &       4.29 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\BitSetNoPadName}                      } &       5.18 &      11.03 &      17.84 &       4.69 &       5.68 &       8.41 \\
+\multicolumn{1}{|c|}{\textbf{\ClassicModName}                       } &       4.16 &       9.96 &      16.44 &       3.81 &       4.95 &       7.70 \\
+\multicolumn{1}{|c|}{\textbf{\MorinBranchyName}                     } &       4.38 &        --- &        --- &       3.82 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\ClassicName}                          } &       4.31 &        --- &        --- &       3.76 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\LowerBoundName}                       } &       4.23 &        --- &        --- &       3.71 &        --- &        --- \\
+\multicolumn{1}{|c|}{\textbf{\MKLName}                              } &       8.20 &      11.59 &      11.61 &       7.26 &      10.40 &      10.37 \\
+\hline
+\end{tabular}
+\caption{Throughput in millions of searches per second with vector $X$ of size 1048575}
+\label{tab:results4}
+\end{table}
+
