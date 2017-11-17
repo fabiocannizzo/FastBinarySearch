@@ -256,7 +256,7 @@ The problem was considered a solved problem for many years, as \textit{binary se
 
 A variation of the algorithm, specialized to find the index of the largest numbers in the array $X$ that is smaller or equal than some number $z\in[X_0,X_N)$, is described by Press et al. \cite{NRC++} and is referred to in the sequel as the \textit{classic} version of the algorithm (see section \ref{sec:binary}). It involves unpredictable control flow branches, which incur penalties on many CPU architectures; is not vectorizable, i.e. it cannot benefit from the vectorial capabilities of modern CPUs, and is not cache memory friendly, due to irregular and unpredictable data accesses. Modern research has been focusing on re-organizing code to eliminate code flow branches, exploiting parallelism and improving memory access patterns.
 
-Zhou et al. \cite{Zhou2002} proposed a version of the algorithm which uses SIMD instructions to solve the scalar problem. The time complexity of their algorithm is $O(log_2N-log_2d)$, where $d$ is the number of floating point numbers which can be processed simultaneously\footnote{$d$ depends on the chosen set of vectorial instructions and floating point representation (e.g. with SSE instructions in \textit{single} precision\footnote{for a description of \textit{single} and \textit{double} precision floating point representation see \cite{IEEE754}} $d=4$)}, hence the improvement is noticeable only with arrays $X$ of small size.
+Zhou et al. \cite{Zhou2002} proposed a version of the algorithm which uses SIMD instructions to solve the scalar problem. The time complexity of their algorithm is $O(log_2N-log_2d)$, where $d$ is the number of floating point numbers which can be processed simultaneously\footnote{$d$ depends on the chosen set of vectorial instructions and floating point representation (E.g. with SSE instructions in \textit{single} precision $d=4$. For a description of \textit{single} and \textit{double} precision floating point representation see \cite{IEE754})}, hence the improvement is noticeable only with arrays $X$ of small size.
 
 Sanders et al. \cite{Sanders2004} described a sorting algorithm \textit{Super Scalar Sample Sort}
 (\textit{SSSS}) that requires a subroutine for locating values in a sorted array, which they efficiently reorder with a special layout due to \textit{Eytzinger} \cite{Eytzinger1590}, and show that branch-free code can be used for finding exact matches.
@@ -346,9 +346,9 @@ The classic implementation of \textit{binary search} described in algorithm \ref
 
 \begin{myitemize}
 	\item the body of the loop contains a branch and each of the two possible code paths have equal probability\footnote{assuming $z$ has equal probability to be in any of the sub-intervals $\curle{[X{i},X_{i+1})}_{i=0}^{N-1}$}, which makes branch prediction algorithms used in modern CPUs ineffective; 
-	\item the algorithm is not easily vectorizable because the boolean condition $z<X_{mid}$ may evaluate differently for different values of $z$ causing the program flow to take different code paths and possibly requiring a different number of iterations for the loop to complete;
+	\item the algorithm is not easily vectorizable because the Boolean condition $z<X_{mid}$ may evaluate differently for different values of $z$ causing the program flow to take different code paths and possibly requiring a different number of iterations for the loop to complete;
 	\item such uncertainty in the number of iterations is also detrimental to the efficiency of branch prediction algorithms;
-    \item the loop terminating condition depends on the state variables of the loop updated after the boolean condition has been resolved, which introduces a sequentiality constraint and disables optimizations associated with out of order execution in super scalar CPUs;
+    \item the loop terminating condition depends on the state variables of the loop updated after the Boolean condition has been resolved, which introduces a sequentiality constraint and disables optimizations associated with out of order execution in super scalar CPUs;
     \item the memory access pattern is irregular and unpredictable, which for large $N$ causes many cache misses.
 \end{myitemize}
 A more detailed discussion on these issues is available in Kim et al. \cite{Kim2011}, Pulver \cite{Pulver2011}, Khuong \cite{Khuong2012} and Khuong et al. \cite{Morin2015}.
@@ -370,7 +370,7 @@ Pulver \cite{Pulver2011} proposed an improved version of \textit{binary search} 
 		\State $k \leftarrow P$
 		\Repeat
 		\State $r \leftarrow i\;|\;k$ \Comment{bitwise OR}
-		\If {$r < N\; \&\& \; z \geq X_{r}$} \Comment{short boolean evaluation}
+		\If {$r < N\; \&\& \; z \geq X_{r}$} \Comment{short Boolean evaluation}
 		\State $i \leftarrow r$
 		\EndIf
 		\State $k \leftarrow k / 2$ \Comment{bitwise right shift}
@@ -391,13 +391,13 @@ and so on, the values of the remaining bits are obtained iterating the procedure
 This methodology is described in algorithm \ref{alg:revisited}, where the input argument $P$ is the precomputed constant $$P=c_p=2^{\floor{ log_2 N }}$$
 The number of iterations is fixed to $p$, therefore no longer dependent on $z$. However,
 as the algorithm proceeds the candidate index of the vector $X$ could exceed the
-size of the vector, therefore a double boolean condition with short circuit evaluation is necessary. If the size of the array $X$ is exactly $2^P-1$, the branch prediction algorithm learns very quickly to guess that this condition is false and the algorithm performs very well. However, the mere existence of a code flow branch makes it not vectorizable.
+size of the vector, therefore a double Boolean condition with short circuit evaluation is necessary. If the size of the array $X$ is exactly $2^P-1$, the branch prediction algorithm learns very quickly to guess that this condition is false and the algorithm performs very well. However, the mere existence of a code flow branch makes it not vectorizable.
 
 %----------------------------------------------------------------------------------------------------------%
 \subsubsection{Vectorizable Leading Bit Binary Search}
 %----------------------------------------------------------------------------------------------------------%
 \label{sec:leadbit}
-The first boolean condition in algorithm \ref{alg:revisited} can be avoided with a simple trick.
+The first Boolean condition in algorithm \ref{alg:revisited} can be avoided with a simple trick.
 Noting that $z<X_N$ by assumption, if the array $X$ is extended to the right side padding 
 it with the last entry $X_N$ up to a size which includes the largest possible index representable with $p$ bits, i.e. $2^p$, the condition $z \geq X_{r}$ resolves to \textit{false} for any $r>N$ generated by the algorithm and the corresponding bit of the index is not set.
 
@@ -516,7 +516,7 @@ The algorithm incurs some upfront setup cost to rearrange the array $X$ and requ
 
 Algorithm \ref{alg:eytzinger} describes the index search procedure, assuming that the Eytzinger layout has already been computed and stored in a new array $Y$. 
 %As discussed in section \ref{sec:offset}, the problem solved in this paper is slightly different from the one solved in \cite{Morin2015}, therefore the algorithm described here is also slightly different. 
-While Sanders' algorithm, as implemented in Khuong at al. \cite{Morin2015}, can only cope with arrays of size $2^h-1$, here the array $X$ is padded with the last element of the array $X_N$ until it reaches the size $2^h-1$, so that the algorithm does not require the introduction of checks for the index range and can work at its best efficiency. This trick, already used in algorithm \ref{alg:binaryopt}, does not affect results, because by the problem statement, the condition $z<X_N$ is always true.
+While Sanders' algorithm, as implemented in Khuong at al. \cite{Morin2015}, copes with arrays of size different from $2^h-1$ by executing a variable number of iterations, which is not vectorizable, here the array $X$ is padded with the last element $X_N$ of the array until it reaches the size $2^h-1$. In this way the algorithm performs a constant number of iterations without requiring the introduction of checks for the index range, thus working at its best efficiency. This trick, already used in algorithm \ref{alg:binaryopt}, does not affect results, because by the problem statement, the condition $z<X_N$ is always true.
 
 This introduces an extra memory requirement of about $(2^L-N)\,S$ bytes, where $S$ is the size in bytes of the elements of array $X$, i.e. 4 for single precision and 8 for double precision. Noting that some nodes in the tree may never be reached, the size of the padded array $Y$ could be reduced, similarly to what was done in section \ref{sec:leadbit}.
 
@@ -702,7 +702,7 @@ Note that the last step does not involve any conditional jump. In the scalar cas
 	\end{algorithmic}
 \end{algorithm}
 
-Similarly to what was already performed in section \ref{sec:eytzinger}, working with SIMD instructions, the conditional assignment can be implemented with just with just an integer addition, e.g. $i \leftarrow i + (z \geq X_i)$.
+Similarly to what was already performed in section \ref{sec:eytzinger}, working with SIMD instructions, the conditional assignment can be implemented with just just with an integer addition, e.g. $i \leftarrow i + (z \geq X_i)$.
 % Similarly to what already discussed for algorithm \ref{alg:binaryopt}, working with Intel SIMD instructions perfect vectorization is not achievable, as fetching from memory the relevant elements of $K_j$ and $X_i$ must be done sequentially.
 
 \subsection{Geometric Interpretation}
@@ -1273,7 +1273,7 @@ coordinates {(Period=1,132.424) (Period=2,132.51) (Period=4,134.244) (Period=8,1
 % ---------------------------------------------------------------------------------------------------
 This test compares the performance of the various implementations of the \textit{binary search} algorithm with time complexity $O(log_2N)$.
 The size of the arrays $X$ and $Z$ is $N=15$ and $M=2048$, hence the workspace fits entirely in L1 cache and there are no cache misses.
-The array $Z$ is randomly generated as descibed in section \ref{sec:arrayz}.
+The array $Z$ is randomly generated as described in section \ref{sec:arrayz}.
 A vectorial implementation is tested for all branch free algorithms, except for \textit{\MorinOffsetName}, where the implementation based on pointers would be more convoluted.
 The test results are shown in table \ref{tab:results0} and illustrated in figure \ref{fig:selectbinary}.
 
@@ -1498,7 +1498,7 @@ Multiplying the test results in table \ref{tab:results100} for the array size yi
 		\multicolumn{1}{|c|}{\textbf{1048575}                               } &      17.67 &      17.66 &      17.69 &       0.01 &      17.61 &      17.58 &      17.66 &       0.02 \\
 		\hline
 	\end{tabular}
-	\caption{Statistical setup cost for algorithm \ref{alg:direct} in nano seconds normalized by the array size}
+	\caption{Statistical setup cost for algorithm \ref{alg:direct} in nanoseconds normalized by the array size}
 	\label{tab:results100}
 \end{table}
 
@@ -1521,7 +1521,7 @@ Next a new algorithm with superior asymptotic complexity is presented. This only
 
 With large arrays, memory access speed is the bottleneck for all algorithms, as already found in previous studies.
 
-When SIMD instuctions are used to solve the vectorial problem, the unavailability of effective \textit{gather} instructions on modern CPUs prevents throughput to scale up by more than a factor of 2, however this may change as technology keeps enhancing. 
+When SIMD instructions are used to solve the vectorial problem, the unavailability of effective \textit{gather} instructions on modern CPUs prevents throughput to scale up by more than a factor of 2, however this may change as technology keeps enhancing. 
 
 
 %-------------------------------------------BIBLIOGRAPHY-------------------------------------------------------------------------------------
