@@ -1,5 +1,5 @@
 # FastBinarySearch
-This source code was originally written to support the conclusions of an article recently published on the Jorunal of parallel and Distributed Computing. It demonstrates and test fast vectorizable algorithms for searching for the insertion point in a sorted vector of floating point numbers. The article is available at https://doi.org/10.1016/j.jpdc.2017.10.007 and a preprint is available at https://arxiv.org/abs/1506.08620. The abstract section is copied here below.
+This source code was originally written to support the conclusions of an article recently published on the Jorunal of parallel and Distributed Computing. It demonstrates and test fast vectorizable algorithms for searching for the insertion point in a sorted vector of floating point numbers. The article is available at https://authors.elsevier.com/a/1W50B2f6jyvQWq and a preprint draft is available at https://arxiv.org/abs/1506.08620. The abstract section is copied here below.
 
 Since then the code has been refactored to be usable as a header-only library. It is very easy to use the library, it only takes a few lines of code. Just include BinSearch.h, create a search engine, profit. A demo program is provided in the source/demo subdirectory.
 
