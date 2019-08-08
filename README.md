@@ -3,7 +3,7 @@ This source code was originally written to support the conclusions of an article
 
 Since then the code has been refactored to be usable as a header-only library. It is very easy to use the library, it only takes a few lines of code. Just include BinSearch.h, create a search engine, profit. A demo program is provided in the source/demo subdirectory.
 
-A C and a Fortran simple API with external memory management are also available. They only allow to use a small subset of the features in the library and have been designed specifically to support future inclusion of these features in the NAG library.
+A C and a Fortran simple API with external memory management are also available. They only allow to use a small subset of the features in the library and have been designed specifically to support inclusion of these features in the NAG library (nag routine m01ndc, https://www.nag.co.uk/numeric/nl/nagdoc_27/clhtml/m01/m01ndc.html).
 
 Some performance test results are available below.
 
