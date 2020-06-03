@@ -1,5 +1,5 @@
 #include "BinSearch.h"
-#include <cstdio>
+#include <iostream>
 
 using namespace BinSearch;
 using namespace std;

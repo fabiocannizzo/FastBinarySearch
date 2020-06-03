@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Type.h"
+#include <algorithm>
 
 namespace BinSearch {
 

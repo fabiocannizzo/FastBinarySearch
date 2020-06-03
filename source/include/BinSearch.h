@@ -1,5 +1,13 @@
 #pragma once
 
+#include "AAlloc.h"
+#include "BinAlgo.h"
+#include "SIMD.h"
+
+#include <algorithm>
+#include <limits>
+
+
 #include "Algo-ClassicOffset.h"
 #include "Algo-BitSet.h"
 #include "Algo-Direct.h"
