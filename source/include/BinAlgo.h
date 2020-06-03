@@ -15,7 +15,6 @@ struct BinAlgo : Details::BinAlgoBase<I,T,A>
     FORCE_INLINE
     uint32 scalar(T z) const
     {
-        uint32 res;
         if (!L || z >= x0)
             if (!R || z < xN)
                 return base_t::scalar(z);
