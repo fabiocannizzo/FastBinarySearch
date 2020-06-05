@@ -15,10 +15,9 @@ struct AlgoKAry
     typedef FVec<I, T> fVec;
     typedef IVec<I, T> iVec;
 
-    union Data
-    {
-        //fVec vec;
+    union Data {
         T x[np];
+        fVec v;  // unused: just to achieve correct alignment
     };
 
 private:
@@ -63,7 +62,7 @@ public:
     AlgoKAry(const T* x, const uint32 n)
     {
         uint32 d = 0; // depth
-        uint32 z_pos[32] = { 0 };  // next index to be populated for each layer in array data
+        uint32 z_pos[32] = {};  // next index to be populated for each layer in array data
         uint32 p = 1;  // number of nodes at layer d
         uint32 nx = np*p; // number of nodes in an over-dimensioned parfect tree
         while(nx < n) {
@@ -98,14 +97,15 @@ public:
         fVec vz(z);
         uint32 depth = 0;
 
-        fVec vx(*reinterpret_cast<const fVec *>(&di[0]));
+        const fVec* pvx = reinterpret_cast<const fVec*>(di);
+        fVec vx(pvx[0]);
         iVec ge = vz >= vx;
         int gecnt = ge.countbit();
         uint32 i = grp_size[depth] * gecnt;
         uint32 p = 1 + gecnt;
 
         while(depth++ < max_depth) {
-            vx = *reinterpret_cast<const fVec *>(&di[p]);
+            vx = pvx[p];
             ge = vz >= vx;
             gecnt = ge.countbit();
             i += grp_size[depth] * gecnt;
