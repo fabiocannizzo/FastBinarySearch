@@ -107,6 +107,9 @@ struct DataWorkspace
             case Periodic:
                 nz = (periodZ < NZ) ? periodZ : NZ;
                 myassert(((nz % 4 == 0) && (nz>0)), "periodZ must be a multiple of 4");
+#if __cplusplus>=201703L
+                [[fallthrough]];
+#endif
             case Uniform:
                 for (uint32 j = 0; j < nz; ) {
                     size_t i1 = rand() % (NX-1);
@@ -145,7 +148,6 @@ struct DataWorkspace
     {
         bool first = true;
         size_t nz = m_z.size();
-        uint32 nx = static_cast<uint32>(m_x.size());
         size_t nerr = 0;
         for (uint32 j = 0; j < nz; ++j) {
             uint32 i = m_r[j];

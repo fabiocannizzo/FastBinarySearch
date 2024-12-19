@@ -34,7 +34,6 @@ private:
         , uint32 *z_pos    // total number of node at this layer
         )
     {
-        const uint32 blk_sz = k * np;  // normal number of nodes in one block at the next layer
         if(x_blk_sz == np) {
             for(uint32 j = 0; j < np; ++j)
                 data[z_pos[depth]].x[j]   = x[std::min(x_blk_ind+j,xLastInd)];

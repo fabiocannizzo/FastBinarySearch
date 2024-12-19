@@ -258,7 +258,6 @@ struct DirectInfo
             // if there has been an increase, then check only up to that point
             uint32 last_seg_to_be_checked = seg_already_checked_from - 1;
             modified = false;
-            uint32 inew = 0;
             for (uint32 i = Gap; i <= last_seg_to_be_checked; ++i) {
                 uint32 iold = fun_t::f(H, cst0, px[i-Gap]);
                 uint32 inew = fun_t::f(H, cst0, px[i]);

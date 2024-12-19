@@ -36,7 +36,7 @@ endif
 TARGETS=$(patsubst %, $(BINDIR)/%$(EXE), paper demo charts)
 
 ifeq ($(CC),g++)
-  CFLAGS=-c -std=c++0x -Iinclude
+  CFLAGS=-c -std=c++17 -Iinclude -Wall -Wextra -Wno-unused-parameter
   LFLAGS=
 endif
 
